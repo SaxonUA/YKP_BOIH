@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>WotStat MOE PRO Widget</title>
+
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+
 <style>
 :root{
   --very_bad:#FF6347;
@@ -15,6 +17,7 @@
   --white:#ffffff;
   --muted:#b9c4d0;
 }
+
 html,body{
   margin:0;
   padding:0;
@@ -22,22 +25,29 @@ html,body{
   font-family:"Roboto Condensed",Arial,sans-serif;
   overflow:hidden;
 }
-body{padding:12px;}
+
+body{
+  padding:12px;
+}
+
 .widget{
   width:372px;
   color:white;
-  background:radial-gradient(circle at 18% 0%, rgba(96,255,0,.15), transparent 34%),
-             linear-gradient(135deg, rgba(8,14,22,.82), rgba(0,0,0,.46));
+  background:
+    radial-gradient(circle at 18% 0%, rgba(96,255,0,.15), transparent 34%),
+    linear-gradient(135deg, rgba(8,14,22,.82), rgba(0,0,0,.46));
   border:1px solid rgba(255,255,255,.18);
   box-shadow:0 0 32px rgba(0,0,0,.72);
   backdrop-filter:blur(7px);
   padding:16px 18px 15px;
 }
+
 .top{
   display:flex;
   justify-content:space-between;
   align-items:flex-start;
 }
+
 .percent{
   font-size:50px;
   line-height:1;
@@ -45,6 +55,7 @@ body{padding:12px;}
   text-shadow:0 2px 5px #000;
   -webkit-text-stroke:1px rgba(0,0,0,.92);
 }
+
 .delta{
   font-size:23px;
   line-height:1;
@@ -52,10 +63,12 @@ body{padding:12px;}
   font-weight:700;
   text-shadow:0 2px 5px #000;
 }
+
 .plus{color:var(--good);}
 .minus{color:var(--very_bad);}
 .neutral{color:#dde5ef;}
 .warn{color:var(--normal);}
+
 .bar-bg{
   margin-top:12px;
   width:100%;
@@ -64,6 +77,7 @@ body{padding:12px;}
   overflow:hidden;
   position:relative;
 }
+
 .bar{
   height:100%;
   width:0%;
@@ -71,6 +85,7 @@ body{padding:12px;}
   box-shadow:0 0 15px currentColor;
   transition:width .18s linear, background .18s linear;
 }
+
 .marker{
   position:absolute;
   top:-2px;
@@ -79,14 +94,17 @@ body{padding:12px;}
   background:rgba(255,255,255,.7);
   opacity:.48;
 }
+
 .m65{left:65%;}
 .m85{left:85%;}
 .m95{left:95%;}
+
 .hr{
   height:1px;
   margin:12px 0 10px;
   background:rgba(255,255,255,.13);
 }
+
 .row{
   display:flex;
   justify-content:space-between;
@@ -95,11 +113,16 @@ body{padding:12px;}
   line-height:1.35;
   text-shadow:0 2px 4px #000;
 }
+
 .label{
   color:var(--muted);
   font-weight:400;
 }
-.value{font-weight:700;}
+
+.value{
+  font-weight:700;
+}
+
 .grid{
   margin-top:10px;
   display:grid;
@@ -108,8 +131,15 @@ body{padding:12px;}
   font-size:15px;
   text-shadow:0 2px 3px #000;
 }
-.grid span{color:#b9c4d0;}
-.grid b{color:white;}
+
+.grid span{
+  color:#b9c4d0;
+}
+
+.grid b{
+  color:white;
+}
+
 .small{
   margin-top:8px;
   font-size:14px;
@@ -119,15 +149,21 @@ body{padding:12px;}
   text-overflow:ellipsis;
   text-shadow:0 2px 3px #000;
 }
+
 .status-ok{color:var(--good);}
 .status-wait{color:var(--normal);}
 .status-bad{color:var(--very_bad);}
-.hidden{display:none;}
+
+.hidden{
+  display:none;
+}
 </style>
 </head>
 
 <body>
+
 <div id="widget" class="widget">
+
   <div class="top">
     <div id="mark-percent" class="percent">--.--%</div>
     <div id="mark-delta" class="delta neutral">AUTO</div>
@@ -144,12 +180,16 @@ body{padding:12px;}
 
   <div class="row">
     <div class="label">Бій</div>
-    <div class="value"><span id="battle-value">0</span> / <span id="target-value">auto</span></div>
+    <div class="value">
+      <span id="battle-value">0</span> / <span id="target-value">auto</span>
+    </div>
   </div>
 
   <div class="row">
     <div class="label">AVG</div>
-    <div class="value"><span id="avg-old">auto</span> → <span id="avg-new">auto</span></div>
+    <div class="value">
+      <span id="avg-old">auto</span> → <span id="avg-new">auto</span>
+    </div>
   </div>
 
   <div class="grid">
@@ -161,61 +201,28 @@ body{padding:12px;}
 
   <div id="tank-name" class="small">Очікування танка...</div>
   <div id="status-line" class="small status-wait">WebSocket: підключення...</div>
+
 </div>
 
 <script>
-/*
-  WotStat MOE PRO Widget
-  Підключення: ws://localhost:38200
-
-  Автоматичні джерела:
-  1) dossier.current / moeInfo.current, якщо WotStat їх передає.
-  2) battle.onBattleResult після бою.
-  3) localStorage — наступний бій на цьому ж танку стартує вже з відомою відміткою.
-
-  Live формула:
-  battleValue = damage + bestAssist
-  bestAssist = max(radio/spot, track, stun)
-  newAvg = oldAvg + 2/101 * (battleValue - oldAvg)
-
-  Важливо:
-  Якщо WotStat не віддає moeInfo.current.damageBetterThanNPercent,
-  точний live % неможливий до першого battle.onBattleResult.
-*/
-
 const WS_URL = "ws://localhost:38200";
+
 const EMA_K = 2 / 101;
 
-/*
-  Live-калібрування як у ProTanki:
-  на старті бою відмітка трохи падає, бо battleValue = 0.
-  Потім під час набору сумарки % плавно росте.
-
-  Для твого прикладу:
-  77.57% → 76.79% на старті
-  1117 сумарки → приблизно 77.25%
-  2267 сумарки → приблизно 77.74%
-
-  Якщо треба тонко підігнати під ProTanki:
-  LIVE_START_DROP = стартове падіння %
-  LIVE_GAIN_AT_TARGET = приріст, коли Бій доходить до цілі
-*/
 const LIVE_START_DROP = 0.78;
 const LIVE_GAIN_AT_TARGET = 1.12;
 
-/*
-  Додаткова локальна база цілей.
-  Можна поповнювати вручну, якщо хочеш, але віджет працює і без неї.
-  Ключ — battle.vehicle.tag.
-*/
 const LOCAL_TARGETS = {
-  // "usa:A83_T110E4": { "65": 2100, "85": 3200, "95": 4200 },
-  // "uk:GB86_Centurion_Action_X": { "65": 2200, "85": 3300, "95": 4300 }
+  // Можна додати свої цілі:
+  // "germany:G177_E65_Zwilling": { "65": 1900, "85": 3000, "95": 4200 }
 };
 
 const el = id => document.getElementById(id);
+
 const fmt = n => Number(n || 0).toLocaleString("uk-UA");
+
 const clamp = (v,min,max) => Math.max(min, Math.min(max, v));
+
 const num = v => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -225,10 +232,12 @@ const widgetEl = el("widget");
 const percentEl = el("mark-percent");
 const deltaEl = el("mark-delta");
 const barEl = el("mark-bar");
+
 const battleValueEl = el("battle-value");
 const targetEl = el("target-value");
 const avgOldEl = el("avg-old");
 const avgNewEl = el("avg-new");
+
 const damageEl = el("damage-value");
 const assistEl = el("assist-value");
 const marksEl = el("marks-value");
@@ -240,7 +249,10 @@ let ws;
 let reconnectTimer;
 
 let playerId = null;
+
 let battleDamage = 0;
+
+let liveAssist = 0;
 let spotAssist = 0;
 let trackAssist = 0;
 let stunAssist = 0;
@@ -258,6 +270,7 @@ let battlesCount = null;
 
 let moeDistribution = null;
 let autoTarget = null;
+
 let lastBattleResultApplied = false;
 
 function setStatus(text, cls){
@@ -276,11 +289,16 @@ function getMarkColor(mark){
 }
 
 function bestAssist(){
-  return Math.max(Number(spotAssist)||0, Number(trackAssist)||0, Number(stunAssist)||0);
+  return Math.max(
+    Number(liveAssist) || 0,
+    Number(spotAssist) || 0,
+    Number(trackAssist) || 0,
+    Number(stunAssist) || 0
+  );
 }
 
 function battleValue(){
-  return (Number(battleDamage)||0) + bestAssist();
+  return (Number(battleDamage) || 0) + bestAssist();
 }
 
 function predictedMovingAvg(){
@@ -319,11 +337,25 @@ function loadVehicleData(){
   try{
     const data = JSON.parse(raw);
 
-    if (data.startRating !== null && data.startRating !== undefined) startRating = Number(data.startRating);
-    if (data.startMovingAvg !== null && data.startMovingAvg !== undefined) startMovingAvg = Number(data.startMovingAvg);
-    if (data.marksOnGun !== null && data.marksOnGun !== undefined) marksOnGun = Number(data.marksOnGun);
-    if (data.battlesCount !== null && data.battlesCount !== undefined) battlesCount = Number(data.battlesCount);
-    if (Array.isArray(data.moeDistribution)) moeDistribution = data.moeDistribution;
+    if (data.startRating !== null && data.startRating !== undefined){
+      startRating = Number(data.startRating);
+    }
+
+    if (data.startMovingAvg !== null && data.startMovingAvg !== undefined){
+      startMovingAvg = Number(data.startMovingAvg);
+    }
+
+    if (data.marksOnGun !== null && data.marksOnGun !== undefined){
+      marksOnGun = Number(data.marksOnGun);
+    }
+
+    if (data.battlesCount !== null && data.battlesCount !== undefined){
+      battlesCount = Number(data.battlesCount);
+    }
+
+    if (Array.isArray(data.moeDistribution)){
+      moeDistribution = data.moeDistribution;
+    }
 
     setStatus("MOE: завантажено з памʼяті танка", "status-ok");
     updateWidget();
@@ -333,19 +365,20 @@ function loadVehicleData(){
   }
 }
 
-/*
-  Шукає потрібні ключі не тільки по точному path, а й глибоко в обʼєкті.
-  Це треба, бо різні версії WotStat можуть мати різну структуру.
-*/
 function deepFind(obj, keys, path = ""){
   const found = [];
+
   if (!obj || typeof obj !== "object") return found;
 
   for (const k of Object.keys(obj)){
     const full = path ? path + "." + k : k;
 
     if (keys.includes(k)){
-      found.push({path: full, key: k, value: obj[k]});
+      found.push({
+        path: full,
+        key: k,
+        value: obj[k]
+      });
     }
 
     if (obj[k] && typeof obj[k] === "object"){
@@ -358,6 +391,7 @@ function deepFind(obj, keys, path = ""){
 
 function normalizeMoeDistribution(raw){
   if (!raw) return null;
+
   const points = [];
 
   if (Array.isArray(raw)){
@@ -365,22 +399,43 @@ function normalizeMoeDistribution(raw){
       if (Array.isArray(item) && item.length >= 2){
         const p = num(item[0]);
         const d = num(item[1]);
-        if (p !== null && d !== null) points.push({percent:p, damage:d});
+
+        if (p !== null && d !== null){
+          points.push({percent:p, damage:d});
+        }
       } else if (item && typeof item === "object"){
-        const p = num(item.percent) ?? num(item.rating) ?? num(item.mark) ?? num(item.key) ?? num(item[0]);
-        const d = num(item.damage) ?? num(item.value) ?? num(item.avgDamage) ?? num(item.movingAvgDamage) ?? num(item[1]);
-        if (p !== null && d !== null) points.push({percent:p, damage:d});
+        const p =
+          num(item.percent) ??
+          num(item.rating) ??
+          num(item.mark) ??
+          num(item.key) ??
+          num(item[0]);
+
+        const d =
+          num(item.damage) ??
+          num(item.value) ??
+          num(item.avgDamage) ??
+          num(item.movingAvgDamage) ??
+          num(item[1]);
+
+        if (p !== null && d !== null){
+          points.push({percent:p, damage:d});
+        }
       }
     }
   } else if (typeof raw === "object"){
     for (const k of Object.keys(raw)){
       const p = num(k);
       const d = num(raw[k]);
-      if (p !== null && d !== null) points.push({percent:p, damage:d});
+
+      if (p !== null && d !== null){
+        points.push({percent:p, damage:d});
+      }
     }
   }
 
-  points.sort((a,b)=>a.percent-b.percent);
+  points.sort((a,b) => a.percent - b.percent);
+
   return points.length ? points : null;
 }
 
@@ -395,11 +450,15 @@ function applyLocalTargets(){
 }
 
 function interpolateRatingFromAvg(avg){
-  if (avg === null || !moeDistribution || moeDistribution.length < 2) return null;
+  if (avg === null || !moeDistribution || moeDistribution.length < 2){
+    return null;
+  }
 
   const points = moeDistribution;
 
-  if (avg <= points[0].damage) return points[0].percent;
+  if (avg <= points[0].damage){
+    return points[0].percent;
+  }
 
   for (let i = 0; i < points.length - 1; i++){
     const a = points[i];
@@ -417,9 +476,14 @@ function interpolateRatingFromAvg(avg){
 function getNextTarget(){
   applyLocalTargets();
 
-  if (!moeDistribution || !moeDistribution.length) return null;
+  if (!moeDistribution || !moeDistribution.length){
+    return null;
+  }
 
-  const current = startRating ?? interpolateRatingFromAvg(startMovingAvg) ?? 0;
+  const current =
+    startRating ??
+    interpolateRatingFromAvg(startMovingAvg) ??
+    0;
 
   for (const p of moeDistribution){
     if (p.percent > current){
@@ -430,23 +494,16 @@ function getNextTarget(){
   return Math.round(moeDistribution[moeDistribution.length - 1].damage);
 }
 
-
 function liveHeuristicRating(){
   if (startRating === null) return null;
 
-  /*
-    Спочатку пробуємо точний шлях через moeDistribution.
-    Якщо WotStat дає damageBetterThanNPercent, тоді % рахується через таблицю.
-  */
   const avgNew = predictedMovingAvg();
   const exact = interpolateRatingFromAvg(avgNew);
-  if (exact !== null) return exact;
 
-  /*
-    Fallback як у ProTanki-візуалізації:
-    на старті: startRating - LIVE_START_DROP
-    під час бою: росте від battleValue / ціль.
-  */
+  if (exact !== null){
+    return exact;
+  }
+
   const target = autoTarget || startMovingAvg || 1;
   const ratio = clamp(battleValue() / Math.max(1, target), 0, 1.25);
 
@@ -455,16 +512,19 @@ function liveHeuristicRating(){
 
 function updateWidget(){
   const value = battleValue();
+  const assist = bestAssist();
   const avgNew = predictedMovingAvg();
 
   autoTarget = getNextTarget();
 
   battleValueEl.textContent = fmt(value);
   battleValueEl.className = autoTarget !== null && value >= autoTarget ? "plus" : "value";
+
   targetEl.textContent = autoTarget !== null ? fmt(autoTarget) : "auto";
 
   damageEl.textContent = fmt(battleDamage);
-  assistEl.textContent = fmt(bestAssist());
+  assistEl.textContent = fmt(assist);
+
   hpEl.textContent = `${fmt(curHP)} / ${fmt(maxHP)}`;
 
   avgOldEl.textContent = startMovingAvg !== null ? fmt(Math.round(startMovingAvg)) : "auto";
@@ -479,31 +539,31 @@ function updateWidget(){
 
   let shownRating = liveHeuristicRating();
 
-  /*
-    Якщо немає навіть startRating, показати % неможливо.
-    Але AVG/урон/асист все одно працюють.
-  */
-
   if (shownRating !== null){
     const color = getMarkColor(shownRating);
+
     percentEl.textContent = Number(shownRating).toFixed(2) + "%";
     percentEl.style.color = color;
+
     barEl.style.width = clamp(shownRating, 0, 100) + "%";
     barEl.style.background = color;
     barEl.style.color = color;
   } else {
     percentEl.textContent = "--.--%";
     percentEl.style.color = "#FFFFFF";
+
     barEl.style.width = "0%";
     barEl.style.background = "#FFFFFF";
   }
 
   if (startRating !== null && shownRating !== null){
     const diff = shownRating - startRating;
+
     deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
     deltaEl.className = "delta " + (diff > 0 ? "plus" : diff < 0 ? "minus" : "neutral");
   } else if (startMovingAvg !== null && avgNew !== null){
     const diffAvg = avgNew - startMovingAvg;
+
     deltaEl.textContent = (diffAvg >= 0 ? "+" : "") + diffAvg.toFixed(0) + " AVG";
     deltaEl.className = "delta " + (diffAvg > 0 ? "plus" : diffAvg < 0 ? "minus" : "neutral");
   } else {
@@ -512,33 +572,56 @@ function updateWidget(){
   }
 
   const moeText = [];
-  if (marksOnGun !== null) moeText.push(`${marksOnGun}★`);
-  if (startRating !== null) moeText.push(`${Number(startRating).toFixed(0)}%`);
+
+  if (marksOnGun !== null){
+    moeText.push(`${marksOnGun}★`);
+  }
+
+  if (startRating !== null){
+    moeText.push(`${Number(startRating).toFixed(0)}%`);
+  }
+
   marksEl.textContent = moeText.length ? moeText.join(" / ") : "-";
 
   if (tankName || vehicleTag){
-    tankEl.textContent = tankName ? `${tankName}${vehicleTag ? " • " + vehicleTag : ""}` : vehicleTag;
+    tankEl.textContent = tankName
+      ? `${tankName}${vehicleTag ? " • " + vehicleTag : ""}`
+      : vehicleTag;
   }
 }
 
 function resetBattleOnly(){
   battleDamage = 0;
+
+  liveAssist = 0;
   spotAssist = 0;
   trackAssist = 0;
   stunAssist = 0;
+
   curHP = 0;
   maxHP = 0;
+
   lastBattleResultApplied = false;
+
   updateWidget();
 }
 
 function applyDossier(value){
   if (!value || typeof value !== "object") return;
 
-  const found = deepFind(value, ["damageRating","movingAvgDamage","battlesCount","battleCount","marksOnGun","vehicleTag"]);
+  const found = deepFind(value, [
+    "damageRating",
+    "movingAvgDamage",
+    "battlesCount",
+    "battleCount",
+    "marksOnGun",
+    "vehicleTag"
+  ]);
 
   for (const f of found){
-    if (f.key === "vehicleTag" && f.value) vehicleTag = String(f.value);
+    if (f.key === "vehicleTag" && f.value){
+      vehicleTag = String(f.value);
+    }
 
     if (f.key === "damageRating"){
       const v = num(f.value);
@@ -562,17 +645,26 @@ function applyDossier(value){
   }
 
   saveVehicleData();
-  setStatus("Dossier: відмітка отримана", "status-ok");
+  setStatus("Dossier: дані відмітки отримано", "status-ok");
   updateWidget();
 }
 
 function applyMoeInfo(value){
   if (!value || typeof value !== "object") return;
 
-  const found = deepFind(value, ["damageBetterThanNPercent","vehicleTag","damageRating","movingAvgDamage","battleCount","battlesCount"]);
+  const found = deepFind(value, [
+    "damageBetterThanNPercent",
+    "vehicleTag",
+    "damageRating",
+    "movingAvgDamage",
+    "battleCount",
+    "battlesCount"
+  ]);
 
   for (const f of found){
-    if (f.key === "vehicleTag" && f.value) vehicleTag = String(f.value);
+    if (f.key === "vehicleTag" && f.value){
+      vehicleTag = String(f.value);
+    }
 
     if (f.key === "damageBetterThanNPercent"){
       const dist = normalizeMoeDistribution(f.value);
@@ -596,18 +688,30 @@ function applyMoeInfo(value){
   }
 
   saveVehicleData();
-  setStatus(moeDistribution ? "MOE: таблиця цілей отримана" : "MOE: дані отримано без таблиці", "status-ok");
+
+  setStatus(
+    moeDistribution ? "MOE: таблиця цілей отримана" : "MOE: дані отримано без таблиці",
+    "status-ok"
+  );
+
   updateWidget();
 }
 
 function extractPlayerIdFromBattleResult(result){
   const personal = result?.personal || {};
+
   for (const key of Object.keys(personal)){
     if (key === "avatar") continue;
+
     const r = personal[key];
+
     if (!r || typeof r !== "object") continue;
-    if (typeof r.accountDBID !== "undefined") return Number(r.accountDBID);
+
+    if (typeof r.accountDBID !== "undefined"){
+      return Number(r.accountDBID);
+    }
   }
+
   return null;
 }
 
@@ -615,7 +719,10 @@ function applyBattleResult(result){
   if (lastBattleResultApplied) return;
 
   const detectedId = extractPlayerIdFromBattleResult(result);
-  if (detectedId && !playerId) playerId = detectedId;
+
+  if (detectedId && !playerId){
+    playerId = detectedId;
+  }
 
   const personal = result?.personal || {};
 
@@ -623,34 +730,52 @@ function applyBattleResult(result){
     if (key === "avatar") continue;
 
     const r = personal[key];
+
     if (!r || typeof r !== "object") continue;
 
     if (playerId && Number(r.accountDBID) !== Number(playerId)) continue;
 
     battleDamage = Number(r.damageDealt) || 0;
+
     spotAssist = Number(r.damageAssistedRadio) || 0;
     trackAssist = Number(r.damageAssistedTrack) || 0;
     stunAssist = Number(r.damageAssistedStun) || 0;
 
-    if (typeof r.damageRating !== "undefined") startRating = Number(r.damageRating);
-    if (typeof r.movingAvgDamage !== "undefined") startMovingAvg = Number(r.movingAvgDamage);
-    if (typeof r.marksOnGun !== "undefined") marksOnGun = Number(r.marksOnGun);
-    if (typeof r.battleNum !== "undefined") battlesCount = Number(r.battleNum);
+    liveAssist = Math.max(spotAssist, trackAssist, stunAssist);
+
+    if (typeof r.damageRating !== "undefined"){
+      startRating = Number(r.damageRating);
+    }
+
+    if (typeof r.movingAvgDamage !== "undefined"){
+      startMovingAvg = Number(r.movingAvgDamage);
+    }
+
+    if (typeof r.marksOnGun !== "undefined"){
+      marksOnGun = Number(r.marksOnGun);
+    }
+
+    if (typeof r.battleNum !== "undefined"){
+      battlesCount = Number(r.battleNum);
+    }
 
     if (typeof r.typeCompDescr !== "undefined" && !vehicleTag){
       vehicleTag = "typeCompDescr:" + r.typeCompDescr;
     }
 
     lastBattleResultApplied = true;
+
     saveVehicleData();
     setStatus("Після бою: реальна відмітка збережена", "status-ok");
     updateWidget();
+
     return;
   }
 }
 
 function connectWS(){
   setStatus("WebSocket: підключення...", "status-wait");
+
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
@@ -664,7 +789,9 @@ function connectWS(){
   };
 
   ws.onerror = () => {
-    try{ ws.close(); }catch(e){}
+    try{
+      ws.close();
+    }catch(e){}
   };
 
   ws.onmessage = handleMessage;
@@ -672,6 +799,7 @@ function connectWS(){
 
 function handleMessage(e){
   let p;
+
   try{
     p = JSON.parse(e.data);
   }catch(err){
@@ -690,14 +818,21 @@ function handleMessage(e){
 
       case "battle.isInBattle":
         widgetEl.classList.toggle("hidden", p.value === false);
-        if (p.value === true) setStatus("Бій: live", "status-ok");
+        if (p.value === true){
+          setStatus("Бій: live", "status-ok");
+        }
         break;
 
       case "battle.vehicle":
-        if (p.value?.localizedName) tankName = p.value.localizedName;
-        else if (p.value?.localizedShortName) tankName = p.value.localizedShortName;
+        if (p.value?.localizedName){
+          tankName = p.value.localizedName;
+        } else if (p.value?.localizedShortName){
+          tankName = p.value.localizedShortName;
+        }
 
-        if (p.value?.tag) vehicleTag = p.value.tag;
+        if (p.value?.tag){
+          vehicleTag = p.value.tag;
+        }
 
         applyLocalTargets();
         loadVehicleData();
@@ -720,7 +855,22 @@ function handleMessage(e){
         break;
 
       case "battle.efficiency.assist":
+        liveAssist = Number(p.value) || 0;
+        updateWidget();
+        break;
+
+      case "battle.efficiency.damageAssistedRadio":
         spotAssist = Number(p.value) || 0;
+        updateWidget();
+        break;
+
+      case "battle.efficiency.damageAssistedTrack":
+        trackAssist = Number(p.value) || 0;
+        updateWidget();
+        break;
+
+      case "battle.efficiency.damageAssistedStun":
+        stunAssist = Number(p.value) || 0;
         updateWidget();
         break;
 
@@ -733,15 +883,30 @@ function handleMessage(e){
         break;
 
       default:
-        /*
-          На випадок, якщо WotStat передає dossier/moeInfo в іншому path.
-        */
         if (String(p.path).toLowerCase().includes("dossier")){
           applyDossier(p.value);
         }
+
         if (String(p.path).toLowerCase().includes("moe")){
           applyMoeInfo(p.value);
         }
+
+        if (String(p.path).toLowerCase().includes("assist")){
+          const v = Number(p.value) || 0;
+
+          if (String(p.path).toLowerCase().includes("radio")){
+            spotAssist = v;
+          } else if (String(p.path).toLowerCase().includes("track")){
+            trackAssist = v;
+          } else if (String(p.path).toLowerCase().includes("stun")){
+            stunAssist = v;
+          } else {
+            liveAssist = v;
+          }
+
+          updateWidget();
+        }
+
         break;
     }
   }
@@ -754,5 +919,6 @@ function handleMessage(e){
 updateWidget();
 connectWS();
 </script>
+
 </body>
 </html>
