@@ -1,71 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
     <meta charset="UTF-8">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Roboto:wght@900&display=swap');
-
-        body { background: transparent; margin: 0; overflow: hidden; }
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&display=swap');
         
-        .widget-container {
-            width: 300px;
-            padding: 15px;
-            background: linear-gradient(90deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 100%);
-            border-left: 5px solid #ffaa00;
-            font-family: 'Roboto', sans-serif;
-            color: white;
-            box-shadow: 10px 0 20px rgba(0,0,0,0.5);
+        body { background: transparent; margin: 0; font-family: 'Roboto Condensed', sans-serif; color: white; }
+        
+        .widget {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 350px;
+            padding: 10px;
         }
 
-        .label { font-size: 12px; text-transform: uppercase; color: #ffaa00; letter-spacing: 1px; }
-        
-        .value-wrapper { display: flex; align-items: baseline; gap: 10px; }
-        
-        .moe-value { font-size: 38px; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 10px rgba(255,170,0,0.5); }
-        
-        .perf-value { font-size: 14px; color: #aaa; }
-
-        /* Анімація при зміні цифр */
-        .updated { animation: flash 0.5s ease-out; }
-        @keyframes flash {
-            0% { color: #5eff00; }
-            100% { color: white; }
+        .player-card {
+            background: rgba(0, 0, 0, 0.7);
+            border-left: 4px solid #ff9d00;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
+
+        .name { font-size: 14px; color: #aaa; text-transform: uppercase; margin-bottom: 5px; }
+        .moe-row { display: flex; align-items: baseline; gap: 8px; }
+        .moe-value { font-size: 32px; font-weight: bold; }
+        .delta { font-size: 16px; }
+        .plus { color: #5eff00; }
+        .minus { color: #ff4040; }
+        .battle-info { font-size: 12px; color: #888; margin-top: 5px; }
     </style>
 </head>
 <body>
-    <div class="widget-container">
-        <div class="label" id="player-name">Завантаження...</div>
-        <div class="value-wrapper">
-            <div class="moe-value" id="moe">00.00%</div>
+
+<div class="widget">
+    <div class="player-card" id="p1-card">
+        <div class="name" id="p1-name">Мій танк</div>
+        <div class="moe-row">
+            <span class="moe-value" id="p1-moe">0.00%</span>
+            <span class="delta" id="p1-delta"></span>
         </div>
-        <div class="perf-value">Бій: <span id="perf">0</span></div>
+        <div class="battle-info">Шкода: <span id="p1-dmg">0</span></div>
     </div>
+</div>
 
-    <script>
-        const socket = new WebSocket("ws://localhost:38200");
+<script>
+    // НАЛАШТУВАННЯ
+    const WS_URL = "ws://localhost:38200";
+    
+    // Змінні стану
+    let currentDmg = 0;
+    let currentAssist = 0;
+    let startMoe = 0; // Це ми спробуємо витягнути з повідомлень мода
+    
+    const socket = new WebSocket(WS_URL);
 
-        socket.onmessage = (event) => {
-            const res = JSON.parse(event.data);
-            
-            if (res.type === "MY_WIDGET_UPDATE") {
-                const moeEl = document.getElementById('moe');
-                const perfEl = document.getElementById('perf');
-                const nameEl = document.getElementById('player-name');
+    socket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
 
-                // Оновлюємо дані
-                if (moeEl.innerText !== res.player.current.toFixed(2) + "%") {
-                    moeEl.classList.add('updated');
-                    setTimeout(() => moeEl.classList.remove('updated'), 500);
-                }
-
-                moeEl.innerText = res.player.current.toFixed(2) + "%";
-                perfEl.innerText = res.player.battle_performance;
-                nameEl.innerText = res.player.nickname;
+        // 1. Отримуємо дані про ефективність у бою
+        if (data.type === "state") {
+            if (data.path === "battle.efficiency.damage") {
+                currentDmg = data.value;
+                updateDisplay();
             }
-        };
+            if (data.path === "battle.efficiency.assist") {
+                currentAssist = data.value;
+                updateDisplay();
+            }
+            // Спробуємо "зловити" назву танка або нік
+            if (data.path === "battle.arena") {
+                document.getElementById('p1-name').innerText = data.value.playerVehicle?.name || "В бою";
+            }
+        }
+        
+        // 2. Отримуємо дані про MoE з досьє, якщо мод їх транслює
+        // Деякі версії WotStat транслюють шлях "hangar.moe" або подібні
+        if (data.path && data.path.includes("moe")) {
+            startMoe = data.value;
+            updateDisplay();
+        }
+    };
 
-        socket.onclose = () => setTimeout(() => location.reload(), 3000);
-    </script>
+    function updateDisplay() {
+        const total = currentDmg + currentAssist;
+        document.getElementById('p1-dmg').innerText = total;
+
+        // Оскільки ми не маємо формули EMA конкретного танка без Python,
+        // ми робимо приблизний розрахунок (0.01% за кожні 500 шкоди відносно середньої)
+        // Це буде працювати як "індикатор прогресу" в реальному часі
+        let estimatedChange = total / 40000; // Груба формула для візуалізації
+        
+        const displayMoe = (startMoe > 0) ? startMoe + estimatedChange : estimatedChange;
+        
+        const moeEl = document.getElementById('p1-moe');
+        moeEl.innerText = displayMoe.toFixed(2) + "%";
+        
+        const deltaEl = document.getElementById('p1-delta');
+        if (total > 0) {
+            deltaEl.innerText = "+" + estimatedChange.toFixed(2);
+            deltaEl.className = "delta plus";
+        }
+    }
+
+    socket.onclose = () => setTimeout(() => location.reload(), 5000);
+</script>
 </body>
 </html>
