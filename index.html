@@ -3,90 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap');
-        
-        body { 
-            margin: 0; background: transparent; 
-            font-family: 'Roboto', sans-serif; 
-            color: white; overflow: hidden; 
-        }
-
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap');
+        body { margin: 0; background: transparent; font-family: 'Roboto', sans-serif; color: white; overflow: hidden; }
         .moe-container {
             display: flex; flex-direction: column;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 10px 20px;
-            border-left: 4px solid #ff9d00;
-            width: fit-content;
-            border-radius: 0 4px 4px 0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px 25px;
+            border-left: 6px solid #ff9d00;
+            width: fit-content; border-radius: 0 8px 8px 0;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
         }
-
-        .tank-name { font-size: 14px; color: #aaa; text-transform: uppercase; margin-bottom: 2px; }
-        
-        .main-row { display: flex; align-items: baseline; gap: 10px; }
-        
-        .current-moe { font-size: 48px; line-height: 1; }
-        
-        .delta { font-size: 20px; font-weight: bold; }
+        .tank-name { font-size: 16px; color: #ff9d00; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+        .main-row { display: flex; align-items: baseline; gap: 15px; }
+        .current-moe { font-size: 60px; line-height: 1; font-weight: 900; filter: drop-shadow(0 0 10px rgba(255,157,0,0.3)); }
+        .delta { font-size: 26px; font-weight: bold; }
         .plus { color: #5eff00; }
         .minus { color: #ff4040; }
-
-        .battle-info { font-size: 16px; margin-top: 5px; color: #eee; }
-        .total-val { color: #ff9d00; }
+        .battle-info { font-size: 18px; margin-top: 10px; color: #aaa; border-top: 1px solid #444; padding-top: 8px; }
+        .total-val { color: #fff; }
+        #debug { font-size: 10px; color: #555; margin-top: 5px; font-family: monospace; }
     </style>
 </head>
 <body>
 
 <div class="moe-container">
-    <div class="tank-name" id="tank">Чекаю бій...</div>
+    <div class="tank-name" id="tank">Очікування бою...</div>
     <div class="main-row">
         <div class="current-moe" id="moe">0.00%</div>
         <div class="delta" id="delta">+0.00%</div>
     </div>
-    <div class="battle-info">Суммарна: <span class="total-val" id="total">0</span></div>
+    <div class="battle-info">СУМАРНА: <span class="total-val" id="total">0</span></div>
+    <div id="debug">System: Ready. Waiting for WotStat...</div>
 </div>
 
 <script>
-    // Налаштування (API ключ ти вже маєш)
     const API_KEY = '1d3c9ce39ebb57594f182ed1ad88c03f';
+    const ACCOUNT_ID = '594760646'; // Твій ID
     const REGION = 'eu';
 
     let state = {
         startMoe: 0,
         tankId: null,
-        nickname: null,
-        k: 0.019802, // Стандартний коефіцієнт для 100 боїв
-        expected: 2500 // Базове значення, якщо не знайдемо точне
+        k: 0.019802,
+        expected: 3200 // Приблизна планка
     };
 
-    async function getStartMoe(nick, tId) {
-        try {
-            // 1. Отримуємо account_id
-            const accRes = await fetch(`https://api.worldoftanks.${REGION}/wot/account/list/?application_id=${API_KEY}&search=${nick}`);
-            const accData = await accRes.json();
-            const aid = accData.data[0].account_id;
+    function log(msg) { document.getElementById('debug').innerText = "Status: " + msg; }
 
-            // 2. Отримуємо MoE танка
-            const statRes = await fetch(`https://api.worldoftanks.${REGION}/wot/tanks/stats/?application_id=${API_KEY}&account_id=${aid}&tank_id=${tId}&fields=achievements`);
-            const statData = await statRes.json();
+    async function loadMoe(tankId) {
+        log(`Запит MoE для танка ${tankId}...`);
+        try {
+            const url = `https://api.worldoftanks.${REGION}/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tankId}&fields=achievements`;
+            const response = await fetch(url);
+            const data = await response.json();
             
-            state.startMoe = statData.data[aid][0].achievements.damage_rating;
-            updateUI(0, 0);
-        } catch (e) { console.error("API Error"); }
+            if (data.status === "ok" && data.data[ACCOUNT_ID]) {
+                state.startMoe = data.data[ACCOUNT_ID][0].achievements.damage_rating;
+                log(`MoE завантажено: ${state.startMoe}%`);
+                updateUI(0, 0);
+            } else {
+                log("API повернуло помилку або немає даних");
+            }
+        } catch (e) {
+            log("Помилка мережі API");
+        }
     }
 
     function updateUI(dmg, ast) {
         const total = dmg + ast;
-        
-        // Математична логіка ProTanki (EMA)
-        // Рахуємо приріст відносно "планки" танка
+        // Формула ProTanki (EMA)
         let diff = (total - state.expected) * (state.k / 100);
         if (total === 0) diff = 0;
 
         const currentMoe = (state.startMoe + diff).toFixed(2);
         
-        // Візуалізація
         document.getElementById('moe').innerText = currentMoe + "%";
-        document.getElementById('total').innerText = total;
+        document.getElementById('total').innerText = total.toLocaleString();
         
         const deltaEl = document.getElementById('delta');
         deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
@@ -94,35 +86,40 @@
     }
 
     function connect() {
-        const socket = new WebSocket("ws://localhost:38200");
+        log("Спроба підключення до WotStat...");
+        const ws = new WebSocket("ws://localhost:38200");
         let d = 0, a = 0;
 
-        socket.onmessage = (event) => {
+        ws.onopen = () => log("WotStat підключено. Чекаю бій.");
+        
+        ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             
             if (msg.type === "state") {
-                // Визначаємо танк та нік при вході
                 if (msg.path === "battle.arena" && msg.value.playerVehicle) {
                     const v = msg.value.playerVehicle;
                     document.getElementById('tank').innerText = v.name;
                     
-                    // Ініціалізація, якщо дані ще не підтягнуті
                     if (state.tankId !== v.tankId) {
                         state.tankId = v.tankId;
-                        // WotStat шле нік у структурі арени
-                        getStartMoe("Saxon_ua", v.tankId); 
+                        loadMoe(v.tankId);
                     }
                 }
 
-                // Оновлення шкоди в реальному часі
                 if (msg.path === "battle.efficiency.damage") d = msg.value;
                 if (msg.path === "battle.efficiency.assist") a = msg.value;
                 
-                if (state.startMoe > 0) updateUI(d, a);
+                if (state.startMoe > 0) {
+                    updateUI(d, a);
+                    log("Бій триває...");
+                }
             }
         };
 
-        socket.onclose = () => setTimeout(connect, 2000);
+        ws.onclose = () => {
+            log("WotStat відключено. Перепідключення...");
+            setTimeout(connect, 3000);
+        };
     }
 
     connect();
