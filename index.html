@@ -1,110 +1,128 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html>
 <head>
     <meta charset="UTF-8">
+    <title>MoE Professional Widget</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flipclock/0.7.8/flipclock.css" />
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&display=swap');
+        :root { --brand: #ff8c00; --bg: rgba(0,0,0,0.7); }
+        body { margin: 0; background: transparent; font-family: 'Orbitron', sans-serif; overflow: hidden; }
         
-        body { background: transparent; margin: 0; font-family: 'Roboto Condensed', sans-serif; color: white; }
-        
-        .widget {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            width: 350px;
-            padding: 10px;
+        .widget-container {
+            width: 450px; height: 180px;
+            background: var(--bg);
+            border-left: 6px solid var(--brand);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        .player-card {
-            background: rgba(0, 0, 0, 0.7);
-            border-left: 4px solid #ff9d00;
-            padding: 10px;
-            border-radius: 4px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        }
-
-        .name { font-size: 14px; color: #aaa; text-transform: uppercase; margin-bottom: 5px; }
-        .moe-row { display: flex; align-items: baseline; gap: 8px; }
-        .moe-value { font-size: 32px; font-weight: bold; }
-        .delta { font-size: 16px; }
+        .header { display: flex; justify-content: space-between; width: 100%; color: var(--brand); font-size: 14px; margin-bottom: 10px; }
+        
+        /* FlipClock Style */
+        .clock-container { transform: scale(0.9); margin: 10px 0; }
+        
+        .footer { width: 100%; display: flex; justify-content: space-between; border-top: 1px solid #444; padding-top: 10px; color: #fff; font-size: 16px; }
+        .delta { font-weight: bold; }
         .plus { color: #5eff00; }
         .minus { color: #ff4040; }
-        .battle-info { font-size: 12px; color: #888; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-<div class="widget">
-    <div class="player-card" id="p1-card">
-        <div class="name" id="p1-name">Мій танк</div>
-        <div class="moe-row">
-            <span class="moe-value" id="p1-moe">0.00%</span>
-            <span class="delta" id="p1-delta"></span>
-        </div>
-        <div class="battle-info">Шкода: <span id="p1-dmg">0</span></div>
+<div class="widget-container">
+    <div class="header">
+        <span id="player-nick">Saxon_ua</span>
+        <span id="tank-name">Чекаю на бій...</span>
+    </div>
+
+    <div class="clock-container">
+        <div id="moe-clock"></div>
+    </div>
+
+    <div class="footer">
+        <span>Сумарна: <span id="total-perf">0</span></span>
+        <span id="moe-delta" class="delta">0.00%</span>
     </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flipclock/0.7.8/flipclock.min.js"></script>
+
 <script>
-    // НАЛАШТУВАННЯ
-    const WS_URL = "ws://localhost:38200";
+    const API_KEY = '1d3c9ce39ebb57594f182ed1ad88c03f';
+    const ACCOUNT_ID = '594841106'; 
     
-    // Змінні стану
-    let currentDmg = 0;
-    let currentAssist = 0;
-    let startMoe = 0; // Це ми спробуємо витягнути з повідомлень мода
-    
-    const socket = new WebSocket(WS_URL);
-
-    socket.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-
-        // 1. Отримуємо дані про ефективність у бою
-        if (data.type === "state") {
-            if (data.path === "battle.efficiency.damage") {
-                currentDmg = data.value;
-                updateDisplay();
-            }
-            if (data.path === "battle.efficiency.assist") {
-                currentAssist = data.value;
-                updateDisplay();
-            }
-            // Спробуємо "зловити" назву танка або нік
-            if (data.path === "battle.arena") {
-                document.getElementById('p1-name').innerText = data.value.playerVehicle?.name || "В бою";
-            }
-        }
-        
-        // 2. Отримуємо дані про MoE з досьє, якщо мод їх транслює
-        // Деякі версії WotStat транслюють шлях "hangar.moe" або подібні
-        if (data.path && data.path.includes("moe")) {
-            startMoe = data.value;
-            updateDisplay();
-        }
+    let state = {
+        startMoe: 0,
+        currentMoe: 0,
+        avgDamage: 2500, // Значення за замовчуванням (буде замінено)
+        k: 2 / 101       // Коефіцієнт EMA для 100 боїв (як у ProTanki)
     };
 
-    function updateDisplay() {
-        const total = currentDmg + currentAssist;
-        document.getElementById('p1-dmg').innerText = total;
+    const clock = $('#moe-clock').FlipClock(0, { clockFace: 'Counter', minimumDigits: 4 });
 
-        // Оскільки ми не маємо формули EMA конкретного танка без Python,
-        // ми робимо приблизний розрахунок (0.01% за кожні 500 шкоди відносно середньої)
-        // Це буде працювати як "індикатор прогресу" в реальному часі
-        let estimatedChange = total / 40000; // Груба формула для візуалізації
-        
-        const displayMoe = (startMoe > 0) ? startMoe + estimatedChange : estimatedChange;
-        
-        const moeEl = document.getElementById('p1-moe');
-        moeEl.innerText = displayMoe.toFixed(2) + "%";
-        
-        const deltaEl = document.getElementById('p1-delta');
-        if (total > 0) {
-            deltaEl.innerText = "+" + estimatedChange.toFixed(2);
-            deltaEl.className = "delta plus";
-        }
+    async function initTank(tankId, name) {
+        document.getElementById('tank-name').innerText = name;
+        try {
+            // 1. Беремо поточну відмітку з WG API
+            const res = await fetch(`https://api.worldoftanks.eu/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tankId}&fields=achievements`);
+            const data = await res.json();
+            state.startMoe = data.data[ACCOUNT_ID][0].achievements.damage_rating;
+            state.currentMoe = state.startMoe;
+            
+            // 2. Встановлюємо очікувану шкоду (спрощено, за рівнем танка)
+            // В ідеалі тут підключити базу XVM або ProTanki
+            state.avgDamage = (tankId % 500) + 2000; // Тимчасова заглушка для розрахунку
+            
+            updateDisplay(0);
+        } catch (e) { console.error("API Error"); }
     }
 
-    socket.onclose = () => setTimeout(() => location.reload(), 5000);
+    function calculateMoe(totalPerf) {
+        if (state.startMoe === 0) return 0;
+        
+        // Математика ProTanki:
+        // Відмітка змінюється залежно від різниці між поточною сумаркою та середньою
+        const delta = (totalPerf - state.avgDamage) * (state.k / 100);
+        return state.startMoe + delta;
+    }
+
+    function updateDisplay(total) {
+        const newMoe = calculateMoe(total);
+        const diff = newMoe - state.startMoe;
+        
+        // Оновлюємо FlipClock (85.50 -> 8550)
+        clock.setTime(Math.round(newMoe * 100));
+        
+        document.getElementById('total-perf').innerText = total;
+        const deltaEl = document.getElementById('moe-delta');
+        deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
+        deltaEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
+    }
+
+    // Підключення до WotStat
+    function connect() {
+        const ws = new WebSocket("ws://localhost:38200");
+        let dmg = 0, ast = 0;
+
+        ws.onmessage = (e) => {
+            const m = JSON.parse(e.data);
+            if (m.type === "state") {
+                if (m.path === "battle.efficiency.damage") dmg = m.value;
+                if (m.path === "battle.efficiency.assist") ast = m.value;
+                if (m.path === "battle.arena" && m.value.playerVehicle) {
+                    initTank(m.value.playerVehicle.tankId, m.value.playerVehicle.name);
+                }
+                updateDisplay(dmg + ast);
+            }
+        };
+        ws.onclose = () => setTimeout(connect, 2000);
+    }
+
+    connect();
 </script>
 </body>
 </html>
