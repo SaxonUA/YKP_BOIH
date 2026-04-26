@@ -1,181 +1,71 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Віджет бою + MoE</title>
+    <meta charset="UTF-8">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Roboto:wght@900&display=swap');
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&display=swap" rel="stylesheet">
+        body { background: transparent; margin: 0; overflow: hidden; }
+        
+        .widget-container {
+            width: 300px;
+            padding: 15px;
+            background: linear-gradient(90deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 100%);
+            border-left: 5px solid #ffaa00;
+            font-family: 'Roboto', sans-serif;
+            color: white;
+            box-shadow: 10px 0 20px rgba(0,0,0,0.5);
+        }
 
-  <style>
-    :root{
-      --bg-color: rgba(0,0,0,0.0);
-      --text-color:#ffffff;
-      --hp-bg: rgba(0,0,0,0.35);
-      --hp-border: rgba(255,255,255,0.18);
-      --hp-fill: #20c76a;
-      --widget-width: 360px;
-      --stroke: rgba(0,0,0,0.90);
-      --stroke-w: 1px;
-      --moe-color: #ffcc00; /* Золотистий колір для відмітки */
-    }
+        .label { font-size: 12px; text-transform: uppercase; color: #ffaa00; letter-spacing: 1px; }
+        
+        .value-wrapper { display: flex; align-items: baseline; gap: 10px; }
+        
+        .moe-value { font-size: 38px; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 10px rgba(255,170,0,0.5); }
+        
+        .perf-value { font-size: 14px; color: #aaa; }
 
-    body{
-      margin:0; padding:10px; height:100vh;
-      background:var(--bg-color); color:var(--text-color);
-      display:flex; justify-content:flex-start; align-items:flex-start;
-      font-family: "Roboto Condensed", Arial, sans-serif;
-    }
-
-    .battle-widget{
-      width: var(--widget-width);
-      display:flex; flex-direction:column; gap: 0.15rem;
-      font-weight: 700;
-    }
-
-    .hp-bar{
-      width: 65%; height: 18px; position: relative;
-      background: var(--hp-bg); border: 1px solid var(--hp-border);
-      border-radius: 999px; overflow: hidden; margin-bottom: 0.3rem;
-    }
-
-    .hp-fill{ height: 100%; width: 0%; background: var(--hp-fill); transition: width 200ms linear; }
-    .hp-overlay{
-      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-      font-size: 16px; -webkit-text-stroke: var(--stroke-w) var(--stroke);
-    }
-
-    .stat-block{ display:flex; align-items:center; gap:.6rem; height: 30px; }
-    .stat-label{ width: 48px; flex: 0 0 48px; display:flex; justify-content:center; align-items:center; }
-    
-    /* Іконки */
-    .stat-label svg{ width: 18px; height: 18px; fill: #ffffff; filter: drop-shadow(0 0 2px rgba(255,255,255,0.5)); }
-    .moe-icon svg { fill: var(--moe-color); filter: drop-shadow(0 0 5px rgba(255,204,0,0.6)); }
-
-    .stat-value{
-      font-size: 20px; letter-spacing: .2px;
-      -webkit-text-stroke: var(--stroke-w) var(--stroke);
-      paint-order: stroke fill;
-      display: flex; gap: 8px; align-items: baseline;
-    }
-
-    .delta { font-size: 14px; }
-    .plus { color: #5eff00; }
-    .minus { color: #ff4040; }
-    .player-name { font-size: 12px; color: #aaa; text-transform: uppercase; margin-right: 5px; }
-  </style>
+        /* Анімація при зміні цифр */
+        .updated { animation: flash 0.5s ease-out; }
+        @keyframes flash {
+            0% { color: #5eff00; }
+            100% { color: white; }
+        }
+    </style>
 </head>
-
 <body>
-  <div class="battle-widget">
-
-    <div class="hp-bar">
-      <div id="hp-fill" class="hp-fill"></div>
-      <div id="hp-overlay" class="hp-overlay">0 / 0</div>
+    <div class="widget-container">
+        <div class="label" id="player-name">Завантаження...</div>
+        <div class="value-wrapper">
+            <div class="moe-value" id="moe">00.00%</div>
+        </div>
+        <div class="perf-value">Бій: <span id="perf">0</span></div>
     </div>
 
-    <div class="stat-block">
-      <div class="stat-label"><svg viewBox="0 0 24 24"><path d="M12 2c-3.9 0-7 3.1-7 7 0 5.2 6 12.6 6.3 12.9.4.5 1.1.5 1.5 0C13 21.6 19 14.2 19 9c0-3.9-3.1-7-7-7z"/></svg></div>
-      <div id="map-name" class="stat-value">-</div>
-    </div>
+    <script>
+        const socket = new WebSocket("ws://localhost:38200");
 
-    <div class="stat-block">
-      <div class="stat-label"><svg viewBox="0 0 24 24"><path d="M13 2.05v2.02c3.95.49 7 3.85 7 7.93s-3.05 7.44-7 7.93v2.02c5.05-.5 9-4.76 9-9.95s-3.95-9.45-9-9.95zM11 2.05c-5.05.5-9 4.76-9 9.95s3.95 9.45 9 9.95v-2.02c-3.95-.49-7-3.85-7-7.93s3.05-7.44 7-7.93V2.05z"/></svg></div>
-      <div id="damage-value" class="stat-value">0</div>
-    </div>
+        socket.onmessage = (event) => {
+            const res = JSON.parse(event.data);
+            
+            if (res.type === "MY_WIDGET_UPDATE") {
+                const moeEl = document.getElementById('moe');
+                const perfEl = document.getElementById('perf');
+                const nameEl = document.getElementById('player-name');
 
-    <div class="stat-block">
-      <div class="stat-label moe-icon">
-        <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-      </div>
-      <div class="stat-value">
-        <span class="player-name">Ви:</span>
-        <span id="p1-moe">0.00%</span>
-        <span id="p1-delta" class="delta"></span>
-      </div>
-    </div>
+                // Оновлюємо дані
+                if (moeEl.innerText !== res.player.current.toFixed(2) + "%") {
+                    moeEl.classList.add('updated');
+                    setTimeout(() => moeEl.classList.remove('updated'), 500);
+                }
 
-    <div class="stat-block" id="p2-block">
-      <div class="stat-label moe-icon">
-        <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-      </div>
-      <div class="stat-value">
-        <span class="player-name">Друг:</span>
-        <span id="p2-moe">0.00%</span>
-        <span id="p2-delta" class="delta"></span>
-      </div>
-    </div>
+                moeEl.innerText = res.player.current.toFixed(2) + "%";
+                perfEl.innerText = res.player.battle_performance;
+                nameEl.innerText = res.player.nickname;
+            }
+        };
 
-  </div>
-
-<script>
-  const MY_PLAYER_ID = 594841106;
-  const WS_URL = "ws://localhost:38200";
-
-  // Елементи
-  const mapEl = document.getElementById("map-name");
-  const damageEl = document.getElementById("damage-value");
-  const hpFill = document.getElementById("hp-fill");
-  const hpOverlay = document.getElementById("hp-overlay");
-  
-  const p1MoeEl = document.getElementById("p1-moe");
-  const p1DeltaEl = document.getElementById("p1-delta");
-  const p2MoeEl = document.getElementById("p2-moe");
-  const p2DeltaEl = document.getElementById("p2-delta");
-
-  let ws, totalDamage = 0, maxHP = 0, curHP = 0;
-
-  function updateMoeUI(elMoe, elDelta, val, delta) {
-    elMoe.textContent = val.toFixed(2) + "%";
-    if (delta !== 0) {
-      elDelta.textContent = (delta > 0 ? "+" : "") + delta.toFixed(2);
-      elDelta.className = "delta " + (delta > 0 ? "plus" : "minus");
-    }
-  }
-
-  function handleMessage(e) {
-    try {
-      const p = JSON.parse(e.data);
-      if (!p?.type || !p.path) return;
-
-      if (p.type === "state") {
-        switch(p.path) {
-          case "battle.arena": mapEl.textContent = p.value?.localizedName || "-"; break;
-          case "battle.maxHealth": maxHP = p.value; updateHP(); break;
-          case "battle.health": curHP = p.value; updateHP(); break;
-          
-          // Логіка для MoE (передбачаємо такі шляхи від моду)
-          case "moe.p1.current": updateMoeUI(p1MoeEl, p1DeltaEl, p.value, p.delta || 0); break;
-          case "moe.p2.current": updateMoeUI(p2MoeEl, p2DeltaEl, p.value, p.delta || 0); break;
-          
-          case "hangar.isInHangar":
-            document.body.style.display = p.value ? "none" : "flex";
-            break;
-        }
-      }
-
-      if (p.type === "trigger" && p.path === "battle.onDamage") {
-        if (p.value?.attacker?.playerId === MY_PLAYER_ID) {
-          totalDamage += Number(p.value.damage) || 0;
-          damageEl.textContent = totalDamage.toLocaleString("uk-UA");
-        }
-      }
-    } catch(err) {}
-  }
-
-  function updateHP(){
-    hpOverlay.textContent = `${curHP} / ${maxHP}`;
-    hpFill.style.width = maxHP ? `${(curHP/maxHP)*100}%` : "0%";
-  }
-
-  function connectWS(){
-    ws = new WebSocket(WS_URL);
-    ws.onmessage = handleMessage;
-    ws.onclose = () => setTimeout(connectWS, 2000);
-  }
-
-  connectWS();
-</script>
+        socket.onclose = () => setTimeout(() => location.reload(), 3000);
+    </script>
 </body>
 </html>
