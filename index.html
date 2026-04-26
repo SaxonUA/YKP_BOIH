@@ -70,10 +70,10 @@ body{
   background:linear-gradient(
     90deg,
     #ff0000 0%,
-    #ff7a00 25%,
-    #ffff00 45%,
-    #60ff00 65%,
-    #00d8ff 82%,
+    #ff7a00 18%,
+    #ffff00 40%,
+    #60ff00 60%,
+    #00d8ff 80%,
     #a000ff 100%
   );
   background-size:260px 100%;
@@ -180,18 +180,11 @@ let stunAssist = 0;
 let startRating = null;
 let startAvg = null;
 
-let currentRatingFromMod = null;
-let currentAvgFromMod = null;
-
 let vehicleTag = null;
 let tankShortName = null;
 let tankName = null;
 
 let moeDistribution = null;
-
-let isInBattle = false;
-let battleStarted = false;
-let baseFrozen = false;
 let lastBattleResultApplied = false;
 
 function fmt(n){
@@ -246,35 +239,28 @@ function predictedAvg(){
   return startAvg + (battleValue() - startAvg) * EMA_K;
 }
 
-function freezeBaseIfReady(){
-  if (baseFrozen) return;
-
-  if (currentRatingFromMod !== null && currentAvgFromMod !== null){
-    startRating = currentRatingFromMod;
-    startAvg = currentAvgFromMod;
-    baseFrozen = true;
-  }
-}
-
 function storageKey(){
   const key = vehicleTag || tankShortName || tankName || "unknown";
-  return "moe_widget_distribution_" + key;
+  return "wotstat_moe_widget_" + key;
 }
 
-function saveDistribution(){
+function saveVehicleData(){
   if (!vehicleTag && !tankShortName && !tankName) return;
-  if (!moeDistribution || !moeDistribution.length) return;
 
-  localStorage.setItem(storageKey(), JSON.stringify({
+  const data = {
     vehicleTag,
     tankShortName,
     tankName,
+    startRating,
+    startAvg,
     moeDistribution,
     savedAt: Date.now()
-  }));
+  };
+
+  localStorage.setItem(storageKey(), JSON.stringify(data));
 }
 
-function loadDistribution(){
+function loadVehicleData(){
   if (!vehicleTag && !tankShortName && !tankName) return false;
 
   const raw = localStorage.getItem(storageKey());
@@ -283,22 +269,32 @@ function loadDistribution(){
   try{
     const data = JSON.parse(raw);
 
-    if (Date.now() - Number(data.savedAt || 0) > 1000 * 60 * 60 * 24 * 30){
+    if (Date.now() - Number(data.savedAt || 0) > 1000 * 60 * 60 * 24 * 7){
       return false;
+    }
+
+    if (startRating === null && data.startRating !== null && data.startRating !== undefined){
+      startRating = Number(data.startRating);
+    }
+
+    if (startAvg === null && data.startAvg !== null && data.startAvg !== undefined){
+      startAvg = Number(data.startAvg);
     }
 
     if (!moeDistribution && Array.isArray(data.moeDistribution)){
       moeDistribution = data.moeDistribution;
-      update();
-      return true;
     }
-  }catch(e){}
 
-  return false;
+    update();
+    return true;
+  }catch(e){
+    return false;
+  }
 }
 
 function deepFind(obj, keys, path = ""){
   const found = [];
+
   if (!obj || typeof obj !== "object") return found;
 
   for (const k of Object.keys(obj)){
@@ -335,8 +331,8 @@ function normalizeMoeDistribution(raw){
           num(item.percent) ??
           num(item.rating) ??
           num(item.mark) ??
-          num(item.percentile) ??
-          num(item.key);
+          num(item.key) ??
+          num(item.percentile);
 
         const d =
           num(item.damage) ??
@@ -359,19 +355,6 @@ function normalizeMoeDistribution(raw){
       if (p !== null && d !== null){
         points.push({percent:p, damage:d});
       }
-
-      if (raw[k] && typeof raw[k] === "object"){
-        const d2 =
-          num(raw[k].damage) ??
-          num(raw[k].value) ??
-          num(raw[k].avgDamage) ??
-          num(raw[k].movingAvgDamage) ??
-          num(raw[k].targetDamage);
-
-        if (p !== null && d2 !== null){
-          points.push({percent:p, damage:d2});
-        }
-      }
     }
   }
 
@@ -379,15 +362,7 @@ function normalizeMoeDistribution(raw){
     .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 0)
     .sort((a,b) => a.percent - b.percent);
 
-  const unique = [];
-  for (const p of clean){
-    const last = unique[unique.length - 1];
-    if (!last || Math.abs(last.percent - p.percent) > 0.001){
-      unique.push(p);
-    }
-  }
-
-  return unique.length >= 2 ? unique : null;
+  return clean.length >= 2 ? clean : null;
 }
 
 function interpolateRatingFromAvg(avg){
@@ -416,25 +391,20 @@ function interpolateRatingFromAvg(avg){
 
   const last = points[points.length - 1];
   const prev = points[points.length - 2];
-  const slope = (last.percent - prev.percent) / Math.max(1, last.damage - prev.damage);
 
+  const slope = (last.percent - prev.percent) / Math.max(1, last.damage - prev.damage);
   return clamp(last.percent + (avg - last.damage) * slope, 0, 100);
 }
 
 function fallbackPercentFromAvg(avg){
   if (startRating === null || startAvg === null || startAvg <= 0 || avg === null) return null;
 
-  /*
-    Це тільки запасний режим, якщо WoTStat не дав damageBetterThanNPercent.
-    Основний правильний режим — через moeDistribution.
-  */
-  const damagePerOnePercent = Math.max(120, startAvg * 0.04);
-  return startRating + (avg - startAvg) / damagePerOnePercent;
+  const estimatedDamagePerOnePercent = Math.max(120, startAvg * 0.04);
+  return startRating + (avg - startAvg) / estimatedDamagePerOnePercent;
 }
 
 function percentCalc(){
   const avg = predictedAvg();
-
   if (avg === null || startRating === null) return null;
 
   const exact = interpolateRatingFromAvg(avg);
@@ -460,7 +430,7 @@ function update(){
     percentEl.textContent = safeP.toFixed(2) + "%";
     barEl.style.width = safeP + "%";
 
-    const diff = startRating !== null ? safeP - startRating : 0;
+    const diff = safeP - startRating;
 
     deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
 
@@ -487,18 +457,11 @@ function resetBattleOnly(){
   spotAssist = 0;
   trackAssist = 0;
   stunAssist = 0;
-
-  battleStarted = false;
-  baseFrozen = false;
   lastBattleResultApplied = false;
-
-  startRating = null;
-  startAvg = null;
-
   update();
 }
 
-function applyStatsSource(value){
+function applyDossier(value){
   if (!value || typeof value !== "object") return;
 
   const found = deepFind(value, [
@@ -524,43 +487,77 @@ function applyStatsSource(value){
       tankName = String(f.value);
     }
 
-    if (f.key === "damageBetterThanNPercent"){
-      const dist = normalizeMoeDistribution(f.value);
-      if (dist){
-        moeDistribution = dist;
-        saveDistribution();
-      }
-    }
-
     if (f.key === "damageRating"){
       const v = num(f.value);
-
-      if (v !== null && v > 0 && v <= 100){
-        currentRatingFromMod = v;
-
-        if (!baseFrozen && !battleStarted && battleValue() === 0){
-          startRating = v;
-        }
+      if (v !== null && v > 0 && v <= 100 && battleValue() === 0){
+        startRating = v;
       }
     }
 
     if (f.key === "movingAvgDamage"){
       const v = num(f.value);
+      if (v !== null && v > 0 && battleValue() === 0){
+        startAvg = v;
+      }
+    }
 
-      if (v !== null && v > 0){
-        currentAvgFromMod = v;
+    if (f.key === "damageBetterThanNPercent"){
+      const dist = normalizeMoeDistribution(f.value);
+      if (dist) moeDistribution = dist;
+    }
+  }
 
-        if (!baseFrozen && !battleStarted && battleValue() === 0){
-          startAvg = v;
-        }
+  saveVehicleData();
+  update();
+}
+
+function applyMoeInfo(value){
+  if (!value || typeof value !== "object") return;
+
+  const found = deepFind(value, [
+    "damageBetterThanNPercent",
+    "damageRating",
+    "movingAvgDamage",
+    "vehicleTag",
+    "localizedShortName",
+    "localizedName",
+    "tag"
+  ]);
+
+  for (const f of found){
+    if ((f.key === "vehicleTag" || f.key === "tag") && f.value){
+      vehicleTag = String(f.value);
+    }
+
+    if (f.key === "localizedShortName" && f.value){
+      tankShortName = String(f.value);
+    }
+
+    if (f.key === "localizedName" && f.value){
+      tankName = String(f.value);
+    }
+
+    if (f.key === "damageBetterThanNPercent"){
+      const dist = normalizeMoeDistribution(f.value);
+      if (dist) moeDistribution = dist;
+    }
+
+    if (f.key === "damageRating"){
+      const v = num(f.value);
+      if (v !== null && v > 0 && v <= 100 && battleValue() === 0){
+        startRating = v;
+      }
+    }
+
+    if (f.key === "movingAvgDamage"){
+      const v = num(f.value);
+      if (v !== null && v > 0 && battleValue() === 0){
+        startAvg = v;
       }
     }
   }
 
-  if (!battleStarted && battleValue() === 0){
-    freezeBaseIfReady();
-  }
-
+  saveVehicleData();
   update();
 }
 
@@ -607,13 +604,6 @@ function applyBattleResult(result){
     stunAssist = Number(r.damageAssistedStun) || 0;
     liveAssist = Math.max(spotAssist, trackAssist, stunAssist);
 
-    /*
-      ВАЖЛИВО:
-      Тут НЕ перезаписуємо startRating і startAvg.
-      BattleResult часто дає вже оновлені значення після бою,
-      а нам потрібна стартова відмітка на початку бою.
-    */
-
     lastBattleResultApplied = true;
     update();
     return;
@@ -645,10 +635,7 @@ function connect(){
     if (!p || !p.type) return;
 
     if (p.type === "state"){
-      const path = String(p.path || "");
-      const low = path.toLowerCase();
-
-      switch(path){
+      switch(p.path){
 
         case "hangar.isInHangar":
           widgetEl.classList.toggle("hidden", !!p.value);
@@ -656,14 +643,7 @@ function connect(){
           break;
 
         case "battle.isInBattle":
-          isInBattle = !!p.value;
           widgetEl.classList.toggle("hidden", p.value === false);
-
-          if (p.value === true){
-            battleStarted = true;
-            freezeBaseIfReady();
-          }
-
           break;
 
         case "battle.vehicle":
@@ -671,66 +651,57 @@ function connect(){
           if (p.value?.localizedName) tankName = p.value.localizedName;
           if (p.value?.tag) vehicleTag = p.value.tag;
 
-          loadDistribution();
+          loadVehicleData();
           update();
           break;
 
         case "battle.efficiency.damage":
-          battleStarted = true;
-          freezeBaseIfReady();
           damage = Number(p.value) || 0;
           update();
           break;
 
         case "battle.efficiency.assist":
-          battleStarted = true;
-          freezeBaseIfReady();
           liveAssist = Number(p.value) || 0;
           update();
           break;
 
         case "battle.efficiency.damageAssistedRadio":
-          battleStarted = true;
-          freezeBaseIfReady();
           spotAssist = Number(p.value) || 0;
           update();
           break;
 
         case "battle.efficiency.damageAssistedTrack":
-          battleStarted = true;
-          freezeBaseIfReady();
           trackAssist = Number(p.value) || 0;
           update();
           break;
 
         case "battle.efficiency.damageAssistedStun":
-          battleStarted = true;
-          freezeBaseIfReady();
           stunAssist = Number(p.value) || 0;
           update();
           break;
 
         case "dossier.current":
+          applyDossier(p.value);
+          break;
+
         case "moeInfo.current":
-          applyStatsSource(p.value);
+          applyMoeInfo(p.value);
           break;
 
         default:
-          if (low.includes("dossier") || low.includes("moe")){
-            applyStatsSource(p.value);
-          }
+          const path = String(p.path).toLowerCase();
 
-          if (low.includes("assist")){
-            battleStarted = true;
-            freezeBaseIfReady();
+          if (path.includes("dossier")) applyDossier(p.value);
+          if (path.includes("moe")) applyMoeInfo(p.value);
 
+          if (path.includes("assist")){
             const v = Number(p.value) || 0;
 
-            if (low.includes("radio")){
+            if (path.includes("radio")){
               spotAssist = v;
-            } else if (low.includes("track")){
+            } else if (path.includes("track")){
               trackAssist = v;
-            } else if (low.includes("stun")){
+            } else if (path.includes("stun")){
               stunAssist = v;
             } else {
               liveAssist = v;
