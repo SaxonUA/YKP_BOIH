@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-<title>WotStat MOE PRO Widget</title>
+<title>WotStat MOE Compact Widget</title>
 
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 
@@ -15,7 +15,7 @@
   --very_good:#02C9B3;
   --unique:#D042F3;
   --white:#ffffff;
-  --muted:#b9c4d0;
+  --muted:#cfd6df;
 }
 
 html,body{
@@ -31,49 +31,51 @@ body{
 }
 
 .widget{
-  width:372px;
+  width:255px;
   color:white;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(96,255,0,.15), transparent 34%),
-    linear-gradient(135deg, rgba(8,14,22,.82), rgba(0,0,0,.46));
+  background:rgba(10,18,28,.28);
   border:1px solid rgba(255,255,255,.18);
-  box-shadow:0 0 32px rgba(0,0,0,.72);
-  backdrop-filter:blur(7px);
-  padding:16px 18px 15px;
+  box-shadow:0 0 22px rgba(0,0,0,.45);
+  backdrop-filter:blur(3px);
+  border-radius:7px;
+  padding:14px 18px 13px;
 }
 
 .top{
   display:flex;
-  justify-content:space-between;
+  justify-content:center;
   align-items:flex-start;
+  gap:10px;
 }
 
 .percent{
-  font-size:50px;
+  font-size:42px;
   line-height:1;
   font-weight:700;
+  color:#ffffff !important;
   text-shadow:0 2px 5px #000;
-  -webkit-text-stroke:1px rgba(0,0,0,.92);
+  -webkit-text-stroke:1px rgba(0,0,0,.88);
 }
 
 .delta{
-  font-size:23px;
+  font-size:18px;
   line-height:1;
-  margin-top:8px;
-  font-weight:700;
-  text-shadow:0 2px 5px #000;
+  margin-top:9px;
+  font-weight:400;
+  color:#dfe6ef;
+  text-shadow:0 2px 4px #000;
 }
 
-.plus{color:var(--good);}
-.minus{color:var(--very_bad);}
-.neutral{color:#dde5ef;}
-.warn{color:var(--normal);}
+.plus{color:var(--good) !important;}
+.minus{color:var(--very_bad) !important;}
+.neutral{color:#dfe6ef !important;}
 
 .bar-bg{
-  margin-top:12px;
+  margin-top:10px;
   width:100%;
-  height:11px;
-  background:rgba(255,255,255,.16);
+  height:7px;
+  background:rgba(255,255,255,.13);
+  border:1px solid rgba(255,255,255,.14);
   overflow:hidden;
   position:relative;
 }
@@ -82,67 +84,31 @@ body{
   height:100%;
   width:0%;
   background:var(--good);
-  box-shadow:0 0 15px currentColor;
+  box-shadow:0 0 12px currentColor;
   transition:width .18s linear, background .18s linear;
 }
 
-.marker{
-  position:absolute;
-  top:-2px;
-  bottom:-2px;
-  width:2px;
-  background:rgba(255,255,255,.7);
-  opacity:.48;
-}
-
-.m65{left:65%;}
-.m85{left:85%;}
-.m95{left:95%;}
-
-.hr{
-  height:1px;
-  margin:12px 0 10px;
-  background:rgba(255,255,255,.13);
-}
-
-.row{
+.compact-total{
+  margin-top:12px;
   display:flex;
   justify-content:space-between;
   align-items:center;
-  font-size:19px;
-  line-height:1.35;
+  font-size:18px;
   text-shadow:0 2px 4px #000;
 }
 
-.label{
-  color:var(--muted);
+.compact-total .label{
+  color:#cfd6df;
   font-weight:400;
 }
 
-.value{
+.compact-total .value{
   font-weight:700;
 }
 
-.grid{
-  margin-top:10px;
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:6px 12px;
-  font-size:15px;
-  text-shadow:0 2px 3px #000;
-}
-
-.grid span{
-  color:#b9c4d0;
-}
-
-.grid b{
-  color:white;
-}
-
 .small{
-  margin-top:8px;
-  font-size:14px;
+  margin-top:7px;
+  font-size:12px;
   color:#b7c2ce;
   white-space:nowrap;
   overflow:hidden;
@@ -170,33 +136,14 @@ body{
   </div>
 
   <div class="bar-bg">
-    <div class="marker m65"></div>
-    <div class="marker m85"></div>
-    <div class="marker m95"></div>
     <div id="mark-bar" class="bar"></div>
   </div>
 
-  <div class="hr"></div>
-
-  <div class="row">
-    <div class="label">Бій</div>
+  <div class="compact-total">
+    <div class="label">Загалом</div>
     <div class="value">
       <span id="battle-value">0</span> / <span id="target-value">auto</span>
     </div>
-  </div>
-
-  <div class="row">
-    <div class="label">AVG</div>
-    <div class="value">
-      <span id="avg-old">auto</span> → <span id="avg-new">auto</span>
-    </div>
-  </div>
-
-  <div class="grid">
-    <div><span>Урон:</span> <b id="damage-value">0</b></div>
-    <div><span>Асист:</span> <b id="assist-value">0</b></div>
-    <div><span>MOE:</span> <b id="marks-value">-</b></div>
-    <div><span>HP:</span> <b id="hp-value">0 / 0</b></div>
   </div>
 
   <div id="tank-name" class="small">Очікування танка...</div>
@@ -213,7 +160,7 @@ const LIVE_START_DROP = 0.78;
 const LIVE_GAIN_AT_TARGET = 1.12;
 
 const LOCAL_TARGETS = {
-  // Можна додати свої цілі:
+  // Приклад:
   // "germany:G177_E65_Zwilling": { "65": 1900, "85": 3000, "95": 4200 }
 };
 
@@ -235,13 +182,6 @@ const barEl = el("mark-bar");
 
 const battleValueEl = el("battle-value");
 const targetEl = el("target-value");
-const avgOldEl = el("avg-old");
-const avgNewEl = el("avg-new");
-
-const damageEl = el("damage-value");
-const assistEl = el("assist-value");
-const marksEl = el("marks-value");
-const hpEl = el("hp-value");
 const tankEl = el("tank-name");
 const statusEl = el("status-line");
 
@@ -512,30 +452,14 @@ function liveHeuristicRating(){
 
 function updateWidget(){
   const value = battleValue();
-  const assist = bestAssist();
-  const avgNew = predictedMovingAvg();
 
   autoTarget = getNextTarget();
 
   battleValueEl.textContent = fmt(value);
-  battleValueEl.className = autoTarget !== null && value >= autoTarget ? "plus" : "value";
-
   targetEl.textContent = autoTarget !== null ? fmt(autoTarget) : "auto";
 
-  damageEl.textContent = fmt(battleDamage);
-  assistEl.textContent = fmt(assist);
-
-  hpEl.textContent = `${fmt(curHP)} / ${fmt(maxHP)}`;
-
-  avgOldEl.textContent = startMovingAvg !== null ? fmt(Math.round(startMovingAvg)) : "auto";
-
-  if (avgNew !== null){
-    avgNewEl.textContent = fmt(Math.round(avgNew));
-    avgNewEl.className = avgNew >= startMovingAvg ? "plus" : "minus";
-  } else {
-    avgNewEl.textContent = "auto";
-    avgNewEl.className = "";
-  }
+  battleValueEl.className =
+    autoTarget !== null && value >= autoTarget ? "plus" : "minus";
 
   let shownRating = liveHeuristicRating();
 
@@ -543,17 +467,17 @@ function updateWidget(){
     const color = getMarkColor(shownRating);
 
     percentEl.textContent = Number(shownRating).toFixed(2) + "%";
-    percentEl.style.color = color;
+    percentEl.style.color = "#ffffff";
 
     barEl.style.width = clamp(shownRating, 0, 100) + "%";
     barEl.style.background = color;
     barEl.style.color = color;
   } else {
     percentEl.textContent = "--.--%";
-    percentEl.style.color = "#FFFFFF";
+    percentEl.style.color = "#ffffff";
 
     barEl.style.width = "0%";
-    barEl.style.background = "#FFFFFF";
+    barEl.style.background = "#ffffff";
   }
 
   if (startRating !== null && shownRating !== null){
@@ -561,27 +485,10 @@ function updateWidget(){
 
     deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
     deltaEl.className = "delta " + (diff > 0 ? "plus" : diff < 0 ? "minus" : "neutral");
-  } else if (startMovingAvg !== null && avgNew !== null){
-    const diffAvg = avgNew - startMovingAvg;
-
-    deltaEl.textContent = (diffAvg >= 0 ? "+" : "") + diffAvg.toFixed(0) + " AVG";
-    deltaEl.className = "delta " + (diffAvg > 0 ? "plus" : diffAvg < 0 ? "minus" : "neutral");
   } else {
     deltaEl.textContent = "AUTO";
     deltaEl.className = "delta neutral";
   }
-
-  const moeText = [];
-
-  if (marksOnGun !== null){
-    moeText.push(`${marksOnGun}★`);
-  }
-
-  if (startRating !== null){
-    moeText.push(`${Number(startRating).toFixed(0)}%`);
-  }
-
-  marksEl.textContent = moeText.length ? moeText.join(" / ") : "-";
 
   if (tankName || vehicleTag){
     tankEl.textContent = tankName
