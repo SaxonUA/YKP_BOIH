@@ -5,101 +5,119 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap');
         body { margin: 0; background: transparent; font-family: 'Roboto', sans-serif; color: white; overflow: hidden; }
-        
         .moe-container {
             display: flex; flex-direction: column;
-            background: rgba(20, 20, 20, 0.9);
-            padding: 15px 25px;
-            border-left: 6px solid #36ff50;
-            width: fit-content;
-            border-radius: 0 10px 10px 0;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            background: rgba(15, 15, 15, 0.9);
+            padding: 15px 25px; border-left: 6px solid #36ff50;
+            width: fit-content; border-radius: 0 10px 10px 0;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
         }
-
-        .tank-name { font-size: 16px; color: #aaa; text-transform: uppercase; margin-bottom: 2px; }
+        .tank-name { font-size: 16px; color: #888; text-transform: uppercase; margin-bottom: 2px; }
         .main-row { display: flex; align-items: baseline; gap: 15px; }
         .current-moe { font-size: 60px; line-height: 1; font-weight: 900; color: #fff; }
-        
         .delta { font-size: 24px; font-weight: bold; }
         .plus { color: #36ff50; }
         .minus { color: #ff4040; }
-
         .info-row { 
             display: flex; justify-content: space-between; 
             margin-top: 10px; font-size: 18px; color: #eee;
-            border-top: 1px solid #333; padding-top: 8px; gap: 20px;
+            border-top: 1px solid #333; padding-top: 8px; gap: 30px;
         }
-        .label { color: #888; font-size: 14px; text-transform: uppercase; margin-right: 5px; }
-        .val { font-weight: bold; }
+        .label { color: #666; font-size: 13px; text-transform: uppercase; margin-right: 5px; }
+        #status-bar { font-size: 9px; color: #333; margin-top: 5px; text-align: right; }
     </style>
 </head>
 <body>
 
 <div class="moe-container">
-    <div class="tank-name" id="tank-name">Очікування...</div>
+    <div class="tank-name" id="tank-name">READY FOR BATTLE</div>
     <div class="main-row">
         <div class="current-moe" id="moe-val">0.00%</div>
         <div id="moe-delta" class="delta">+0.00%</div>
     </div>
-    
     <div class="info-row">
-        <div><span class="label">Сумарка:</span><span class="val" id="current-total">0</span></div>
-        <div><span class="label">Треба:</span><span class="val" id="target-total" style="color: #36ff50;">0</span></div>
+        <div><span class="label">SUM:</span><span id="current-total">0</span></div>
+        <div><span class="label">TARGET:</span><span id="target-total" style="color: #36ff50;">---</span></div>
     </div>
+    <div id="status-bar">HYBRID MODE ACTIVE</div>
 </div>
 
 <script>
-    let startMoe = 0;
+    const API_KEY = '1d3c9ce39ebb57594f182ed1ad88c03f';
+    const ACCOUNT_ID = '594760646'; // prIG0Rod
+    
+    let state = {
+        startMoe: 0,
+        tankId: null,
+        k: 0.019802,
+        expected: 2800
+    };
+
+    async function fetchFromWG(tId) {
+        try {
+            const p = "https://api.allorigins.win/get?url=";
+            const u = `https://api.worldoftanks.eu/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tId}&fields=achievements`;
+            const r = await fetch(p + encodeURIComponent(u));
+            const j = await r.json();
+            const d = JSON.parse(j.contents);
+            if (d.data[ACCOUNT_ID]) {
+                state.startMoe = d.data[ACCOUNT_ID][0].achievements.damage_rating;
+                updateView(0, 0);
+            }
+        } catch(e) { console.log("WG API Busy"); }
+    }
+
+    function updateView(dmg, ast, target) {
+        const total = dmg + ast;
+        let moe = state.startMoe;
+        
+        // Якщо WotStat не дав готовий MoE, рахуємо самі
+        let diff = (total - state.expected) * (state.k / 100);
+        if (total === 0) diff = 0;
+        
+        let finalMoe = (moe + diff).toFixed(2);
+        
+        document.getElementById('moe-val').innerText = finalMoe + "%";
+        document.getElementById('current-total').innerText = total;
+        document.getElementById('target-total').innerText = target || state.expected;
+        
+        const dEl = document.getElementById('moe-delta');
+        dEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
+        dEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
+    }
 
     function connect() {
-        // Підключаємось до локального сервера WotStat
-        const socket = new WebSocket("ws://localhost:38200");
-
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+        const ws = new WebSocket("ws://localhost:38200");
+        
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            const val = data.value || {};
+            const battle = val.battle || {};
             
-            // WotStat шле повний стан у полі "value", якщо шлях порожній або "battle"
-            if (data.type === "state") {
-                const state = data.value;
-                const battle = state.battle || {};
-                const arena = state.arena || {};
-                
-                // 1. Отримуємо назву танка
-                if (arena.playerVehicle) {
-                    document.getElementById('tank-name').innerText = arena.playerVehicle.name;
-                }
+            // 1. Танк
+            const tId = val.tankId || val.arena?.playerVehicle?.tankId;
+            if (tId && state.tankId !== tId) {
+                state.tankId = tId;
+                document.getElementById('tank-name').innerText = val.name || val.arena?.playerVehicle?.name || "TANK " + tId;
+                fetchFromWG(tId);
+            }
 
-                // 2. Отримуємо дані відмітки (Gun Marks)
-                // WotStat рахує це автоматично
-                if (battle.efficiency && battle.efficiency.gunMark) {
-                    const gm = battle.efficiency.gunMark;
-                    
-                    // Поточний % відмітки (прогноз)
-                    const currentMoe = gm.currentMoe || 0;
-                    if (startMoe === 0) startMoe = currentMoe;
-
-                    document.getElementById('moe-val').innerText = currentMoe.toFixed(2) + "%";
-
-                    // Розрахунок дельти
-                    const diff = currentMoe - startMoe;
-                    const deltaEl = document.getElementById('moe-delta');
-                    deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-                    deltaEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
-
-                    // 3. Сумарка та "Ціль" (скільки треба для росту)
-                    const dmg = battle.efficiency.damage || 0;
-                    const ast = battle.efficiency.assist || 0;
-                    document.getElementById('current-total').innerText = (dmg + ast);
-                    
-                    // "Планка" відмітки (скільки треба тримати для поточного %)
-                    if (gm.targetDamage) {
-                        document.getElementById('target-total').innerText = Math.round(gm.targetDamage);
-                    }
-                }
+            // 2. Дані з WotStat (пріоритет)
+            if (battle.efficiency && battle.efficiency.gunMark) {
+                const gm = battle.efficiency.gunMark;
+                state.startMoe = gm.currentMoe - (( (battle.efficiency.damage + battle.efficiency.assist) - gm.targetDamage) * (state.k/100)); // Реверс для точності
+                updateView(battle.efficiency.damage, battle.efficiency.assist, Math.round(gm.targetDamage));
+            } else {
+                // 3. Якщо WotStat ще не роздуплився, беремо сиру шкоду
+                let d = val.damage || battle.efficiency?.damage || 0;
+                let a = val.assist || battle.efficiency?.assist || 0;
+                if (data.path === "battle.efficiency.damage") d = data.value;
+                if (data.path === "battle.efficiency.assist") a = data.value;
+                if (state.startMoe > 0) updateView(d, a);
             }
         };
 
-        socket.onclose = () => setTimeout(connect, 2000);
+        ws.onclose = () => setTimeout(connect, 2000);
     }
 
     connect();
