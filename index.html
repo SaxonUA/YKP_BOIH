@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>WoT WebSocket Debug</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0b1118;
+    color: #e8f0ff;
+    font-family: Consolas, monospace;
+    font-size: 14px;
+  }
+
+  body {
+    padding: 12px;
+  }
+
+  .top {
+    position: sticky;
+    top: 0;
+    background: #0b1118;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #2d3a4a;
+    z-index: 10;
+  }
+
+  .status {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .ok {
+    color: #7cff7c;
+  }
+
+  .bad {
+    color: #ff7777;
+  }
+
+  .warn {
+    color: #ffd36a;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  button {
+    background: #1d2b3a;
+    color: #fff;
+    border: 1px solid #3d536b;
+    padding: 6px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+
+  button:hover {
+    background: #2a3d52;
+  }
+
+  input {
+    background: #111c27;
+    color: #fff;
+    border: 1px solid #3d536b;
+    padding: 6px 10px;
+    border-radius: 4px;
+    width: 360px;
+  }
+
+  .info {
+    color: #9fb0c5;
+    margin-bottom: 8px;
+  }
+
+  #log {
+    margin-top: 12px;
+    white-space: pre-wrap;
+  }
+
+  .msg {
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 8px 0;
+  }
+
+  .path {
+    color: #7cc7ff;
+    font-weight: bold;
+  }
+
+  .type {
+    color: #ffd36a;
+  }
+
+  .json {
+    color: #d8e6ff;
+  }
+</style>
+</head>
+
+<body>
+
+<div class="top">
+  <div id="status" class="status warn">Статус: підключення...</div>
+
+  <div class="controls">
+    <button onclick="clearLog()">Очистити</button>
+    <button onclick="pauseLog()">Пауза / Продовжити</button>
+    <input id="filter" placeholder="Фільтр, наприклад: mark, damage, health, battle">
+  </div>
+
+  <div class="info">
+    Отримано повідомлень: <span id="count">0</span> |
+    Показано: <span id="shown">0</span> |
+    Логування: <span id="pause-state">увімкнено</span>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<script>
+const WS_URL = "ws://localhost:38200";
+
+const statusEl = document.getElementById("status");
+const logEl = document.getElementById("log");
+const countEl = document.getElementById("count");
+const shownEl = document.getElementById("shown");
+const filterEl = document.getElementById("filter");
+const pauseStateEl = document.getElementById("pause-state");
+
+let ws = null;
+let reconnectTimer = null;
+let totalCount = 0;
+let shownCount = 0;
+let paused = false;
+
+function setStatus(text, cls) {
+  statusEl.textContent = "Статус: " + text;
+  statusEl.className = "status " + cls;
+}
+
+function clearLog() {
+  logEl.innerHTML = "";
+  totalCount = 0;
+  shownCount = 0;
+  countEl.textContent = "0";
+  shownEl.textContent = "0";
+}
+
+function pauseLog() {
+  paused = !paused;
+  pauseStateEl.textContent = paused ? "пауза" : "увімкнено";
+}
+
+function safeJsonParse(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return raw;
+  }
+}
+
+function stringify(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (e) {
+    return String(value);
+  }
+}
+
+function addMessage(data) {
+  totalCount++;
+  countEl.textContent = totalCount;
+
+  console.log(data);
+
+  if (paused) return;
+
+  const filter = filterEl.value.trim().toLowerCase();
+  const text = stringify(data);
+  const textLower = text.toLowerCase();
+
+  if (filter && !textLower.includes(filter)) {
+    return;
+  }
+
+  shownCount++;
+  shownEl.textContent = shownCount;
+
+  const type = data && data.type ? data.type : "unknown";
+  const path = data && data.path ? data.path : "no path";
+
+  const item = document.createElement("div");
+  item.className = "msg";
+
+  item.innerHTML =
+    '<div><span class="type">type:</span> ' + escapeHtml(type) + '</div>' +
+    '<div><span class="path">path:</span> ' + escapeHtml(path) + '</div>' +
+    '<pre class="json">' + escapeHtml(text) + '</pre>';
+
+  logEl.prepend(item);
+
+  while (logEl.children.length > 300) {
+    logEl.removeChild(logEl.lastChild);
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function connectWS() {
+  setStatus("підключення до " + WS_URL, "warn");
+
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = function () {
+    setStatus("підключено", "ok");
+    clearTimeout(reconnectTimer);
+  };
+
+  ws.onclose = function () {
+    setStatus("відключено, повторне підключення через 1 секунду", "bad");
+    reconnectTimer = setTimeout(connectWS, 1000);
+  };
+
+  ws.onerror = function () {
+    setStatus("помилка WebSocket", "bad");
+    try {
+      ws.close();
+    } catch (e) {}
+  };
+
+  ws.onmessage = function (event) {
+    const data = safeJsonParse(event.data);
+    addMessage(data);
+  };
+}
+
+connectWS();
+</script>
+
+</body>
+</html>
