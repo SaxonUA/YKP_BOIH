@@ -14,9 +14,7 @@ html,body{
   overflow:hidden;
 }
 
-body{
-  padding:12px;
-}
+body{padding:12px;}
 
 .widget{
   width:260px;
@@ -70,10 +68,11 @@ body{
   background:linear-gradient(
     90deg,
     #ff0000 0%,
-    #ff7a00 18%,
-    #ffff00 40%,
-    #60ff00 60%,
-    #00d8ff 80%,
+    #ff7a00 15%,
+    #ffff00 35%,
+    #60ff00 55%,
+    #00d8ff 70%,
+    #a000ff 85%,
     #a000ff 100%
   );
   background-size:260px 100%;
@@ -104,9 +103,7 @@ body{
   text-shadow:0 2px 4px #000;
 }
 
-.total-label{
-  color:#d7dde5;
-}
+.total-label{color:#d7dde5;}
 
 .value.good{color:#60ff00;}
 .value.bad{color:#ff4b4b;}
@@ -121,9 +118,7 @@ body{
   text-shadow:0 2px 3px #000;
 }
 
-.hidden{
-  display:none;
-}
+.hidden{display:none;}
 </style>
 </head>
 
@@ -247,7 +242,7 @@ function storageKey(){
 function saveVehicleData(){
   if (!vehicleTag && !tankShortName && !tankName) return;
 
-  const data = {
+  localStorage.setItem(storageKey(), JSON.stringify({
     vehicleTag,
     tankShortName,
     tankName,
@@ -255,9 +250,7 @@ function saveVehicleData(){
     startAvg,
     moeDistribution,
     savedAt: Date.now()
-  };
-
-  localStorage.setItem(storageKey(), JSON.stringify(data));
+  }));
 }
 
 function loadVehicleData(){
@@ -273,11 +266,11 @@ function loadVehicleData(){
       return false;
     }
 
-    if (startRating === null && data.startRating !== null && data.startRating !== undefined){
+    if (startRating === null && data.startRating !== null){
       startRating = Number(data.startRating);
     }
 
-    if (startAvg === null && data.startAvg !== null && data.startAvg !== undefined){
+    if (startAvg === null && data.startAvg !== null){
       startAvg = Number(data.startAvg);
     }
 
@@ -312,27 +305,49 @@ function deepFind(obj, keys, path = ""){
   return found;
 }
 
+/*
+  ВАЖЛИВО:
+  Тут виправлення. WoTStat / ProTanki можуть давати таблицю і так:
+  [percent, damage]
+  і так:
+  [damage, percent]
+  або object:
+  {"71.56":2474}
+  або:
+  {"2474":71.56}
+*/
 function normalizeMoeDistribution(raw){
   if (!raw) return null;
 
-  const points = [];
+  const candidates = [];
+
+  function pushPoint(a,b){
+    const x = num(a);
+    const y = num(b);
+    if (x === null || y === null) return;
+
+    if (x >= 0 && x <= 100 && y > 100){
+      candidates.push({percent:x, damage:y});
+    }
+
+    if (y >= 0 && y <= 100 && x > 100){
+      candidates.push({percent:y, damage:x});
+    }
+  }
 
   if (Array.isArray(raw)){
     for (const item of raw){
       if (Array.isArray(item) && item.length >= 2){
-        const p = num(item[0]);
-        const d = num(item[1]);
+        pushPoint(item[0], item[1]);
+      }
 
-        if (p !== null && d !== null){
-          points.push({percent:p, damage:d});
-        }
-      } else if (item && typeof item === "object"){
+      if (item && typeof item === "object" && !Array.isArray(item)){
         const p =
           num(item.percent) ??
           num(item.rating) ??
           num(item.mark) ??
-          num(item.key) ??
-          num(item.percentile);
+          num(item.percentile) ??
+          num(item.moe);
 
         const d =
           num(item.damage) ??
@@ -342,27 +357,58 @@ function normalizeMoeDistribution(raw){
           num(item.targetDamage) ??
           num(item.requiredDamage);
 
-        if (p !== null && d !== null){
-          points.push({percent:p, damage:d});
-        }
-      }
-    }
-  } else if (typeof raw === "object"){
-    for (const k of Object.keys(raw)){
-      const p = num(k);
-      const d = num(raw[k]);
-
-      if (p !== null && d !== null){
-        points.push({percent:p, damage:d});
+        pushPoint(p,d);
       }
     }
   }
 
-  const clean = points
-    .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 0)
+  if (typeof raw === "object" && !Array.isArray(raw)){
+    for (const k of Object.keys(raw)){
+      const v = raw[k];
+
+      if (typeof v === "number" || typeof v === "string"){
+        pushPoint(k,v);
+      }
+
+      if (v && typeof v === "object"){
+        const p =
+          num(v.percent) ??
+          num(v.rating) ??
+          num(v.mark) ??
+          num(v.percentile) ??
+          num(v.moe) ??
+          num(k);
+
+        const d =
+          num(v.damage) ??
+          num(v.value) ??
+          num(v.avgDamage) ??
+          num(v.movingAvgDamage) ??
+          num(v.targetDamage) ??
+          num(v.requiredDamage);
+
+        pushPoint(p,d);
+      }
+    }
+  }
+
+  const clean = candidates
+    .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 100)
     .sort((a,b) => a.percent - b.percent);
 
-  return clean.length >= 2 ? clean : null;
+  const unique = [];
+
+  for (const p of clean){
+    const last = unique[unique.length - 1];
+
+    if (!last || Math.abs(last.percent - p.percent) > 0.001){
+      unique.push(p);
+    }
+  }
+
+  if (unique.length < 2) return null;
+
+  return unique;
 }
 
 function interpolateRatingFromAvg(avg){
@@ -512,53 +558,7 @@ function applyDossier(value){
 }
 
 function applyMoeInfo(value){
-  if (!value || typeof value !== "object") return;
-
-  const found = deepFind(value, [
-    "damageBetterThanNPercent",
-    "damageRating",
-    "movingAvgDamage",
-    "vehicleTag",
-    "localizedShortName",
-    "localizedName",
-    "tag"
-  ]);
-
-  for (const f of found){
-    if ((f.key === "vehicleTag" || f.key === "tag") && f.value){
-      vehicleTag = String(f.value);
-    }
-
-    if (f.key === "localizedShortName" && f.value){
-      tankShortName = String(f.value);
-    }
-
-    if (f.key === "localizedName" && f.value){
-      tankName = String(f.value);
-    }
-
-    if (f.key === "damageBetterThanNPercent"){
-      const dist = normalizeMoeDistribution(f.value);
-      if (dist) moeDistribution = dist;
-    }
-
-    if (f.key === "damageRating"){
-      const v = num(f.value);
-      if (v !== null && v > 0 && v <= 100 && battleValue() === 0){
-        startRating = v;
-      }
-    }
-
-    if (f.key === "movingAvgDamage"){
-      const v = num(f.value);
-      if (v !== null && v > 0 && battleValue() === 0){
-        startAvg = v;
-      }
-    }
-  }
-
-  saveVehicleData();
-  update();
+  applyDossier(value);
 }
 
 function extractPlayerIdFromBattleResult(result){
@@ -635,7 +635,10 @@ function connect(){
     if (!p || !p.type) return;
 
     if (p.type === "state"){
-      switch(p.path){
+      const path = String(p.path || "");
+      const low = path.toLowerCase();
+
+      switch(path){
 
         case "hangar.isInHangar":
           widgetEl.classList.toggle("hidden", !!p.value);
@@ -680,28 +683,19 @@ function connect(){
           update();
           break;
 
-        case "dossier.current":
-          applyDossier(p.value);
-          break;
-
-        case "moeInfo.current":
-          applyMoeInfo(p.value);
-          break;
-
         default:
-          const path = String(p.path).toLowerCase();
+          if (low.includes("dossier") || low.includes("moe")){
+            applyDossier(p.value);
+          }
 
-          if (path.includes("dossier")) applyDossier(p.value);
-          if (path.includes("moe")) applyMoeInfo(p.value);
-
-          if (path.includes("assist")){
+          if (low.includes("assist")){
             const v = Number(p.value) || 0;
 
-            if (path.includes("radio")){
+            if (low.includes("radio")){
               spotAssist = v;
-            } else if (path.includes("track")){
+            } else if (low.includes("track")){
               trackAssist = v;
-            } else if (path.includes("stun")){
+            } else if (low.includes("stun")){
               stunAssist = v;
             } else {
               liveAssist = v;
