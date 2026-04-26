@@ -187,6 +187,23 @@ const WS_URL = "ws://localhost:38200";
 const EMA_K = 2 / 101;
 
 /*
+  Live-калібрування як у ProTanki:
+  на старті бою відмітка трохи падає, бо battleValue = 0.
+  Потім під час набору сумарки % плавно росте.
+
+  Для твого прикладу:
+  77.57% → 76.79% на старті
+  1117 сумарки → приблизно 77.25%
+  2267 сумарки → приблизно 77.74%
+
+  Якщо треба тонко підігнати під ProTanki:
+  LIVE_START_DROP = стартове падіння %
+  LIVE_GAIN_AT_TARGET = приріст, коли Бій доходить до цілі
+*/
+const LIVE_START_DROP = 0.78;
+const LIVE_GAIN_AT_TARGET = 1.12;
+
+/*
   Додаткова локальна база цілей.
   Можна поповнювати вручну, якщо хочеш, але віджет працює і без неї.
   Ключ — battle.vehicle.tag.
@@ -413,6 +430,29 @@ function getNextTarget(){
   return Math.round(moeDistribution[moeDistribution.length - 1].damage);
 }
 
+
+function liveHeuristicRating(){
+  if (startRating === null) return null;
+
+  /*
+    Спочатку пробуємо точний шлях через moeDistribution.
+    Якщо WotStat дає damageBetterThanNPercent, тоді % рахується через таблицю.
+  */
+  const avgNew = predictedMovingAvg();
+  const exact = interpolateRatingFromAvg(avgNew);
+  if (exact !== null) return exact;
+
+  /*
+    Fallback як у ProTanki-візуалізації:
+    на старті: startRating - LIVE_START_DROP
+    під час бою: росте від battleValue / ціль.
+  */
+  const target = autoTarget || startMovingAvg || 1;
+  const ratio = clamp(battleValue() / Math.max(1, target), 0, 1.25);
+
+  return startRating - LIVE_START_DROP + ratio * LIVE_GAIN_AT_TARGET;
+}
+
 function updateWidget(){
   const value = battleValue();
   const avgNew = predictedMovingAvg();
@@ -437,15 +477,12 @@ function updateWidget(){
     avgNewEl.className = "";
   }
 
-  let shownRating = null;
+  let shownRating = liveHeuristicRating();
 
-  const predictedByMoe = interpolateRatingFromAvg(avgNew);
-
-  if (predictedByMoe !== null){
-    shownRating = predictedByMoe;
-  } else if (startRating !== null){
-    shownRating = startRating;
-  }
+  /*
+    Якщо немає навіть startRating, показати % неможливо.
+    Але AVG/урон/асист все одно працюють.
+  */
 
   if (shownRating !== null){
     const color = getMarkColor(shownRating);
