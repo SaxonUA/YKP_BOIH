@@ -8,12 +8,8 @@
 
 <style>
 :root{
-  --very_bad:#FF6347;
-  --bad:#FE7903;
-  --normal:#F8F400;
   --good:#60FF00;
-  --very_good:#02C9B3;
-  --unique:#D042F3;
+  --bad:#ff4b4b;
   --white:#ffffff;
   --muted:#cfd6df;
 }
@@ -33,7 +29,7 @@ body{
 .widget{
   width:255px;
   color:white;
-  background:rgba(10,18,28,.28);
+  background:rgba(10,18,28,.30);
   border:1px solid rgba(255,255,255,.18);
   box-shadow:0 0 22px rgba(0,0,0,.45);
   backdrop-filter:blur(3px);
@@ -67,15 +63,15 @@ body{
 }
 
 .plus{color:var(--good) !important;}
-.minus{color:var(--very_bad) !important;}
+.minus{color:var(--bad) !important;}
 .neutral{color:#dfe6ef !important;}
 
 .bar-bg{
   margin-top:10px;
   width:100%;
-  height:7px;
-  background:rgba(255,255,255,.13);
-  border:1px solid rgba(255,255,255,.14);
+  height:8px;
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.18);
   overflow:hidden;
   position:relative;
 }
@@ -83,10 +79,23 @@ body{
 .bar{
   height:100%;
   width:0%;
-  background:var(--good);
-  box-shadow:0 0 12px currentColor;
-  transition:width .18s linear, background .18s linear;
+  background:#ffffff;
+  box-shadow:0 0 10px rgba(255,255,255,.65);
+  transition:width .18s linear;
 }
+
+.marker{
+  position:absolute;
+  top:-2px;
+  bottom:-2px;
+  width:2px;
+  background:rgba(255,255,255,.78);
+  z-index:3;
+}
+
+.m65{left:65%;}
+.m85{left:85%;}
+.m95{left:95%;}
 
 .compact-total{
   margin-top:12px;
@@ -106,19 +115,15 @@ body{
   font-weight:700;
 }
 
-.small{
+.tank{
   margin-top:7px;
-  font-size:12px;
-  color:#b7c2ce;
+  font-size:13px;
+  color:#cfd6df;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
   text-shadow:0 2px 3px #000;
 }
-
-.status-ok{color:var(--good);}
-.status-wait{color:var(--normal);}
-.status-bad{color:var(--very_bad);}
 
 .hidden{
   display:none;
@@ -136,6 +141,9 @@ body{
   </div>
 
   <div class="bar-bg">
+    <div class="marker m65"></div>
+    <div class="marker m85"></div>
+    <div class="marker m95"></div>
     <div id="mark-bar" class="bar"></div>
   </div>
 
@@ -146,8 +154,7 @@ body{
     </div>
   </div>
 
-  <div id="tank-name" class="small">Очікування танка...</div>
-  <div id="status-line" class="small status-wait">WebSocket: підключення...</div>
+  <div id="tank-name" class="tank">Очікування танка...</div>
 
 </div>
 
@@ -157,7 +164,7 @@ const WS_URL = "ws://localhost:38200";
 const EMA_K = 2 / 101;
 
 const LIVE_START_DROP = 0.78;
-const LIVE_GAIN_AT_TARGET = 1.12;
+const LIVE_GAIN_AT_TARGET = 1.55;
 
 const LOCAL_TARGETS = {
   // Приклад:
@@ -183,7 +190,6 @@ const barEl = el("mark-bar");
 const battleValueEl = el("battle-value");
 const targetEl = el("target-value");
 const tankEl = el("tank-name");
-const statusEl = el("status-line");
 
 let ws;
 let reconnectTimer;
@@ -197,11 +203,9 @@ let spotAssist = 0;
 let trackAssist = 0;
 let stunAssist = 0;
 
-let curHP = 0;
-let maxHP = 0;
-
 let vehicleTag = null;
 let tankName = null;
+let tankShortName = null;
 
 let startRating = null;
 let startMovingAvg = null;
@@ -212,21 +216,6 @@ let moeDistribution = null;
 let autoTarget = null;
 
 let lastBattleResultApplied = false;
-
-function setStatus(text, cls){
-  statusEl.textContent = text;
-  statusEl.className = "small " + (cls || "status-wait");
-}
-
-function getMarkColor(mark){
-  if (mark === null || mark === undefined) return "#FFFFFF";
-  if (mark < 65) return "#FF6347";
-  if (mark < 75) return "#FE7903";
-  if (mark < 85) return "#F8F400";
-  if (mark < 95) return "#60FF00";
-  if (mark < 100) return "#02C9B3";
-  return "#D042F3";
-}
 
 function bestAssist(){
   return Math.max(
@@ -247,16 +236,17 @@ function predictedMovingAvg(){
 }
 
 function storageKey(){
-  const key = vehicleTag || tankName || "unknown";
+  const key = vehicleTag || tankShortName || tankName || "unknown";
   return "wotstat_moe_widget_" + key;
 }
 
 function saveVehicleData(){
-  if (!vehicleTag && !tankName) return;
+  if (!vehicleTag && !tankShortName && !tankName) return;
 
   const data = {
     vehicleTag,
     tankName,
+    tankShortName,
     startRating,
     startMovingAvg,
     marksOnGun,
@@ -269,7 +259,7 @@ function saveVehicleData(){
 }
 
 function loadVehicleData(){
-  if (!vehicleTag && !tankName) return false;
+  if (!vehicleTag && !tankShortName && !tankName) return false;
 
   const raw = localStorage.getItem(storageKey());
   if (!raw) return false;
@@ -297,7 +287,6 @@ function loadVehicleData(){
       moeDistribution = data.moeDistribution;
     }
 
-    setStatus("MOE: завантажено з памʼяті танка", "status-ok");
     updateWidget();
     return true;
   }catch(e){
@@ -438,16 +427,18 @@ function liveHeuristicRating(){
   if (startRating === null) return null;
 
   const avgNew = predictedMovingAvg();
-  const exact = interpolateRatingFromAvg(avgNew);
 
+  const exact = interpolateRatingFromAvg(avgNew);
   if (exact !== null){
     return exact;
   }
 
-  const target = autoTarget || startMovingAvg || 1;
-  const ratio = clamp(battleValue() / Math.max(1, target), 0, 1.25);
+  const base = startRating - LIVE_START_DROP;
+  const avg = startMovingAvg || 1;
+  const value = battleValue();
+  const ratio = value / avg;
 
-  return startRating - LIVE_START_DROP + ratio * LIVE_GAIN_AT_TARGET;
+  return base + ratio * LIVE_GAIN_AT_TARGET;
 }
 
 function updateWidget(){
@@ -464,14 +455,11 @@ function updateWidget(){
   let shownRating = liveHeuristicRating();
 
   if (shownRating !== null){
-    const color = getMarkColor(shownRating);
-
     percentEl.textContent = Number(shownRating).toFixed(2) + "%";
     percentEl.style.color = "#ffffff";
 
     barEl.style.width = clamp(shownRating, 0, 100) + "%";
-    barEl.style.background = color;
-    barEl.style.color = color;
+    barEl.style.background = "#ffffff";
   } else {
     percentEl.textContent = "--.--%";
     percentEl.style.color = "#ffffff";
@@ -490,10 +478,10 @@ function updateWidget(){
     deltaEl.className = "delta neutral";
   }
 
-  if (tankName || vehicleTag){
-    tankEl.textContent = tankName
-      ? `${tankName}${vehicleTag ? " • " + vehicleTag : ""}`
-      : vehicleTag;
+  const showTank = tankShortName || tankName || vehicleTag;
+
+  if (showTank){
+    tankEl.textContent = showTank;
   }
 }
 
@@ -504,9 +492,6 @@ function resetBattleOnly(){
   spotAssist = 0;
   trackAssist = 0;
   stunAssist = 0;
-
-  curHP = 0;
-  maxHP = 0;
 
   lastBattleResultApplied = false;
 
@@ -552,7 +537,6 @@ function applyDossier(value){
   }
 
   saveVehicleData();
-  setStatus("Dossier: дані відмітки отримано", "status-ok");
   updateWidget();
 }
 
@@ -595,12 +579,6 @@ function applyMoeInfo(value){
   }
 
   saveVehicleData();
-
-  setStatus(
-    moeDistribution ? "MOE: таблиця цілей отримана" : "MOE: дані отримано без таблиці",
-    "status-ok"
-  );
-
   updateWidget();
 }
 
@@ -673,7 +651,6 @@ function applyBattleResult(result){
     lastBattleResultApplied = true;
 
     saveVehicleData();
-    setStatus("Після бою: реальна відмітка збережена", "status-ok");
     updateWidget();
 
     return;
@@ -681,17 +658,13 @@ function applyBattleResult(result){
 }
 
 function connectWS(){
-  setStatus("WebSocket: підключення...", "status-wait");
-
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
     clearTimeout(reconnectTimer);
-    setStatus("WebSocket: підключено", "status-ok");
   };
 
   ws.onclose = () => {
-    setStatus("WebSocket: перепідключення...", "status-bad");
     reconnectTimer = setTimeout(connectWS, 1000);
   };
 
@@ -725,16 +698,17 @@ function handleMessage(e){
 
       case "battle.isInBattle":
         widgetEl.classList.toggle("hidden", p.value === false);
-        if (p.value === true){
-          setStatus("Бій: live", "status-ok");
-        }
         break;
 
       case "battle.vehicle":
+        if (p.value?.localizedShortName){
+          tankShortName = p.value.localizedShortName;
+        } else if (p.value?.localizedName){
+          tankShortName = p.value.localizedName;
+        }
+
         if (p.value?.localizedName){
           tankName = p.value.localizedName;
-        } else if (p.value?.localizedShortName){
-          tankName = p.value.localizedShortName;
         }
 
         if (p.value?.tag){
@@ -743,16 +717,6 @@ function handleMessage(e){
 
         applyLocalTargets();
         loadVehicleData();
-        updateWidget();
-        break;
-
-      case "battle.health":
-        curHP = Math.max(0, Number(p.value) || 0);
-        updateWidget();
-        break;
-
-      case "battle.maxHealth":
-        maxHP = Number(p.value) || 0;
         updateWidget();
         break;
 
