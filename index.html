@@ -2,124 +2,127 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>MoE Professional Widget</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flipclock/0.7.8/flipclock.css" />
     <style>
-        :root { --brand: #ff8c00; --bg: rgba(0,0,0,0.7); }
-        body { margin: 0; background: transparent; font-family: 'Orbitron', sans-serif; overflow: hidden; }
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap');
         
-        .widget-container {
-            width: 450px; height: 180px;
-            background: var(--bg);
-            border-left: 6px solid var(--brand);
-            border-radius: 8px;
-            padding: 20px;
-            display: flex; flex-direction: column; align-items: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        body { 
+            margin: 0; background: transparent; 
+            font-family: 'Roboto', sans-serif; 
+            color: white; overflow: hidden; 
         }
 
-        .header { display: flex; justify-content: space-between; width: 100%; color: var(--brand); font-size: 14px; margin-bottom: 10px; }
+        .moe-container {
+            display: flex; flex-direction: column;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-left: 4px solid #ff9d00;
+            width: fit-content;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .tank-name { font-size: 14px; color: #aaa; text-transform: uppercase; margin-bottom: 2px; }
         
-        /* FlipClock Style */
-        .clock-container { transform: scale(0.9); margin: 10px 0; }
+        .main-row { display: flex; align-items: baseline; gap: 10px; }
         
-        .footer { width: 100%; display: flex; justify-content: space-between; border-top: 1px solid #444; padding-top: 10px; color: #fff; font-size: 16px; }
-        .delta { font-weight: bold; }
+        .current-moe { font-size: 48px; line-height: 1; }
+        
+        .delta { font-size: 20px; font-weight: bold; }
         .plus { color: #5eff00; }
         .minus { color: #ff4040; }
+
+        .battle-info { font-size: 16px; margin-top: 5px; color: #eee; }
+        .total-val { color: #ff9d00; }
     </style>
 </head>
 <body>
 
-<div class="widget-container">
-    <div class="header">
-        <span id="player-nick">Saxon_ua</span>
-        <span id="tank-name">Чекаю на бій...</span>
+<div class="moe-container">
+    <div class="tank-name" id="tank">Чекаю бій...</div>
+    <div class="main-row">
+        <div class="current-moe" id="moe">0.00%</div>
+        <div class="delta" id="delta">+0.00%</div>
     </div>
-
-    <div class="clock-container">
-        <div id="moe-clock"></div>
-    </div>
-
-    <div class="footer">
-        <span>Сумарна: <span id="total-perf">0</span></span>
-        <span id="moe-delta" class="delta">0.00%</span>
-    </div>
+    <div class="battle-info">Суммарна: <span class="total-val" id="total">0</span></div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/flipclock/0.7.8/flipclock.min.js"></script>
-
 <script>
+    // Налаштування (API ключ ти вже маєш)
     const API_KEY = '1d3c9ce39ebb57594f182ed1ad88c03f';
-    const ACCOUNT_ID = '594841106'; 
-    
+    const REGION = 'eu';
+
     let state = {
         startMoe: 0,
-        currentMoe: 0,
-        avgDamage: 2500, // Значення за замовчуванням (буде замінено)
-        k: 2 / 101       // Коефіцієнт EMA для 100 боїв (як у ProTanki)
+        tankId: null,
+        nickname: null,
+        k: 0.019802, // Стандартний коефіцієнт для 100 боїв
+        expected: 2500 // Базове значення, якщо не знайдемо точне
     };
 
-    const clock = $('#moe-clock').FlipClock(0, { clockFace: 'Counter', minimumDigits: 4 });
-
-    async function initTank(tankId, name) {
-        document.getElementById('tank-name').innerText = name;
+    async function getStartMoe(nick, tId) {
         try {
-            // 1. Беремо поточну відмітку з WG API
-            const res = await fetch(`https://api.worldoftanks.eu/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tankId}&fields=achievements`);
-            const data = await res.json();
-            state.startMoe = data.data[ACCOUNT_ID][0].achievements.damage_rating;
-            state.currentMoe = state.startMoe;
+            // 1. Отримуємо account_id
+            const accRes = await fetch(`https://api.worldoftanks.${REGION}/wot/account/list/?application_id=${API_KEY}&search=${nick}`);
+            const accData = await accRes.json();
+            const aid = accData.data[0].account_id;
+
+            // 2. Отримуємо MoE танка
+            const statRes = await fetch(`https://api.worldoftanks.${REGION}/wot/tanks/stats/?application_id=${API_KEY}&account_id=${aid}&tank_id=${tId}&fields=achievements`);
+            const statData = await statRes.json();
             
-            // 2. Встановлюємо очікувану шкоду (спрощено, за рівнем танка)
-            // В ідеалі тут підключити базу XVM або ProTanki
-            state.avgDamage = (tankId % 500) + 2000; // Тимчасова заглушка для розрахунку
-            
-            updateDisplay(0);
+            state.startMoe = statData.data[aid][0].achievements.damage_rating;
+            updateUI(0, 0);
         } catch (e) { console.error("API Error"); }
     }
 
-    function calculateMoe(totalPerf) {
-        if (state.startMoe === 0) return 0;
+    function updateUI(dmg, ast) {
+        const total = dmg + ast;
         
-        // Математика ProTanki:
-        // Відмітка змінюється залежно від різниці між поточною сумаркою та середньою
-        const delta = (totalPerf - state.avgDamage) * (state.k / 100);
-        return state.startMoe + delta;
-    }
+        // Математична логіка ProTanki (EMA)
+        // Рахуємо приріст відносно "планки" танка
+        let diff = (total - state.expected) * (state.k / 100);
+        if (total === 0) diff = 0;
 
-    function updateDisplay(total) {
-        const newMoe = calculateMoe(total);
-        const diff = newMoe - state.startMoe;
+        const currentMoe = (state.startMoe + diff).toFixed(2);
         
-        // Оновлюємо FlipClock (85.50 -> 8550)
-        clock.setTime(Math.round(newMoe * 100));
+        // Візуалізація
+        document.getElementById('moe').innerText = currentMoe + "%";
+        document.getElementById('total').innerText = total;
         
-        document.getElementById('total-perf').innerText = total;
-        const deltaEl = document.getElementById('moe-delta');
+        const deltaEl = document.getElementById('delta');
         deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
         deltaEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
     }
 
-    // Підключення до WotStat
     function connect() {
-        const ws = new WebSocket("ws://localhost:38200");
-        let dmg = 0, ast = 0;
+        const socket = new WebSocket("ws://localhost:38200");
+        let d = 0, a = 0;
 
-        ws.onmessage = (e) => {
-            const m = JSON.parse(e.data);
-            if (m.type === "state") {
-                if (m.path === "battle.efficiency.damage") dmg = m.value;
-                if (m.path === "battle.efficiency.assist") ast = m.value;
-                if (m.path === "battle.arena" && m.value.playerVehicle) {
-                    initTank(m.value.playerVehicle.tankId, m.value.playerVehicle.name);
+        socket.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            
+            if (msg.type === "state") {
+                // Визначаємо танк та нік при вході
+                if (msg.path === "battle.arena" && msg.value.playerVehicle) {
+                    const v = msg.value.playerVehicle;
+                    document.getElementById('tank').innerText = v.name;
+                    
+                    // Ініціалізація, якщо дані ще не підтягнуті
+                    if (state.tankId !== v.tankId) {
+                        state.tankId = v.tankId;
+                        // WotStat шле нік у структурі арени
+                        getStartMoe("Saxon_ua", v.tankId); 
+                    }
                 }
-                updateDisplay(dmg + ast);
+
+                // Оновлення шкоди в реальному часі
+                if (msg.path === "battle.efficiency.damage") d = msg.value;
+                if (msg.path === "battle.efficiency.assist") a = msg.value;
+                
+                if (state.startMoe > 0) updateUI(d, a);
             }
         };
-        ws.onclose = () => setTimeout(connect, 2000);
+
+        socket.onclose = () => setTimeout(connect, 2000);
     }
 
     connect();
