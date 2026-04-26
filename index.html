@@ -1,722 +1,488 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-<meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <title>WoT Mark Widget</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      overflow: hidden;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #fff;
+    }
 
-<style>
-html,body{
-  margin:0;
-  padding:0;
-  background:transparent;
-  font-family:"Roboto Condensed",Arial,sans-serif;
-  overflow:hidden;
-}
+    .widget {
+      width: 300px;
+      padding: 12px 14px 13px;
+      background: rgba(12, 12, 16, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.45);
+      backdrop-filter: blur(8px);
+    }
 
-body{padding:12px;}
+    .top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 7px;
+    }
 
-.widget{
-  width:260px;
-  padding:14px;
-  border-radius:8px;
-  background:rgba(0,0,0,.45);
-  color:#fff;
-  box-shadow:0 0 18px rgba(0,0,0,.45);
-}
+    .tank {
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1;
+      max-width: 160px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 2px 4px rgba(0,0,0,.7);
+    }
 
-.top{
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  gap:10px;
-}
+    .markBox {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      white-space: nowrap;
+    }
 
-.percent{
-  font-size:40px;
-  line-height:1;
-  font-weight:700;
-  color:#fff;
-  text-shadow:0 2px 5px #000;
-  -webkit-text-stroke:1px rgba(0,0,0,.85);
-}
+    .mark {
+      font-size: 22px;
+      font-weight: 900;
+      color: #ffffff;
+      line-height: 1;
+      text-shadow: 0 2px 5px rgba(0,0,0,.75);
+    }
 
-.delta{
-  font-size:18px;
-  line-height:1;
-  margin-top:5px;
-  font-weight:700;
-  text-shadow:0 2px 4px #000;
-}
+    .delta {
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1;
+    }
 
-.plus{color:#60ff00;}
-.minus{color:#ff4b4b;}
-.neutral{color:#dfe6ef;}
+    .delta.plus {
+      color: #50ff8a;
+    }
 
-.bar-bg{
-  margin-top:14px;
-  height:8px;
-  background:rgba(255,255,255,.15);
-  border:1px solid rgba(255,255,255,.22);
-  position:relative;
-  overflow:hidden;
-}
+    .delta.minus {
+      color: #ff6464;
+    }
 
-.bar{
-  height:100%;
-  width:0%;
-  background:linear-gradient(
-    90deg,
-    #ff0000 0%,
-    #ff7a00 15%,
-    #ffff00 35%,
-    #60ff00 55%,
-    #00d8ff 70%,
-    #a000ff 85%,
-    #a000ff 100%
-  );
-  background-size:260px 100%;
-  background-repeat:no-repeat;
-  transition:width .2s linear;
-}
+    .barWrap {
+      position: relative;
+      width: 100%;
+      height: 13px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.16);
+    }
 
-.marker{
-  position:absolute;
-  top:-2px;
-  bottom:-2px;
-  width:2px;
-  background:rgba(255,255,255,.9);
-  z-index:3;
-}
+    .bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        #ff2020 0%,
+        #ff2020 15%,
+        #ff8a00 35%,
+        #ffe600 55%,
+        #42ff58 70%,
+        #20eaff 85%,
+        #b44cff 100%
+      );
+      transition: width .25s ease;
+    }
 
-.m65{left:65%;}
-.m85{left:85%;}
-.m95{left:95%;}
+    .marks {
+      position: relative;
+      width: 100%;
+      height: 14px;
+      margin-top: 3px;
+      font-size: 9px;
+      font-weight: 800;
+      color: rgba(255,255,255,.7);
+    }
 
-.total{
-  margin-top:10px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  font-size:18px;
-  font-weight:700;
-  text-shadow:0 2px 4px #000;
-}
+    .m {
+      position: absolute;
+      transform: translateX(-50%);
+      top: 0;
+    }
 
-.total-label{color:#d7dde5;}
+    .m65 { left: 65%; }
+    .m85 { left: 85%; }
+    .m95 { left: 95%; }
+    .m100 { left: 100%; transform: translateX(-100%); }
 
-.value.good{color:#60ff00;}
-.value.bad{color:#ff4b4b;}
+    .bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 4px;
+      font-size: 13px;
+      font-weight: 800;
+      color: rgba(255,255,255,.92);
+      text-shadow: 0 2px 4px rgba(0,0,0,.65);
+    }
 
-.tank{
-  margin-top:7px;
-  font-size:13px;
-  color:#cfd6df;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  text-shadow:0 2px 3px #000;
-}
+    .need {
+      color: rgba(255,255,255,.82);
+    }
 
-.hidden{display:none;}
-</style>
+    .muted {
+      color: rgba(255,255,255,.45);
+    }
+  </style>
 </head>
 
 <body>
+  <div class="widget">
+    <div class="top">
+      <div class="tank" id="tankName">---</div>
 
-<div id="widget" class="widget">
-  <div class="top">
-    <div id="percent" class="percent">--.--%</div>
-    <div id="delta" class="delta neutral">0.00%</div>
-  </div>
+      <div class="markBox">
+        <div class="mark" id="markPercent">--.--%</div>
+        <div class="delta" id="markDelta">---</div>
+      </div>
+    </div>
 
-  <div class="bar-bg">
-    <div class="marker m65"></div>
-    <div class="marker m85"></div>
-    <div class="marker m95"></div>
-    <div id="bar" class="bar"></div>
-  </div>
+    <div class="barWrap">
+      <div class="bar" id="bar"></div>
+    </div>
 
-  <div class="total">
-    <div class="total-label">Загалом</div>
-    <div>
-      <span id="value" class="value bad">0</span> / <span id="target">0</span>
+    <div class="marks">
+      <span class="m m65">65</span>
+      <span class="m m85">85</span>
+      <span class="m m95">95</span>
+      <span class="m m100">100</span>
+    </div>
+
+    <div class="bottom">
+      <div id="battleSum">0</div>
+      <div class="need" id="needText">0 / ---</div>
     </div>
   </div>
 
-  <div id="tank" class="tank"></div>
-</div>
+  <script>
+    const WS_URL =
+      new URLSearchParams(location.search).get("ws") ||
+      "ws://127.0.0.1:3413";
 
-<script>
-const WS_URL = "ws://localhost:38200";
-const EMA_K = 2 / 101;
+    const state = {
+      vehicleName: "---",
+      vehicleTag: null,
 
-const el = id => document.getElementById(id);
+      dossierVehicleTag: null,
+      startMark: null,
+      currentMark: null,
+      baseAvg: null,
+      battlesCount: null,
 
-const widgetEl = el("widget");
-const percentEl = el("percent");
-const deltaEl = el("delta");
-const barEl = el("bar");
-const valueEl = el("value");
-const targetEl = el("target");
-const tankEl = el("tank");
+      damage: 0,
+      assist: 0,
+      blocked: 0,
+      stun: 0,
 
-let ws;
-let reconnectTimer;
+      inBattle: false,
+      connected: false
+    };
 
-let playerId = null;
+    const el = {
+      tankName: document.getElementById("tankName"),
+      markPercent: document.getElementById("markPercent"),
+      markDelta: document.getElementById("markDelta"),
+      bar: document.getElementById("bar"),
+      battleSum: document.getElementById("battleSum"),
+      needText: document.getElementById("needText")
+    };
 
-let damage = 0;
-let liveAssist = 0;
-let spotAssist = 0;
-let trackAssist = 0;
-let stunAssist = 0;
-
-let startRating = null;
-let startAvg = null;
-
-let vehicleTag = null;
-let tankShortName = null;
-let tankName = null;
-
-let moeDistribution = null;
-let lastBattleResultApplied = false;
-
-function fmt(n){
-  return Number(Math.round(n || 0)).toLocaleString("uk-UA");
-}
-
-function num(v){
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function clamp(v,min,max){
-  return Math.max(min, Math.min(max, v));
-}
-
-function cleanTankName(){
-  if (tankShortName){
-    return tankShortName.replace(/([A-Z])(\d+)/g,"$1 $2");
-  }
-
-  if (tankName){
-    return tankName.replace(/([A-Z])(\d+)/g,"$1 $2");
-  }
-
-  if (vehicleTag){
-    let n = vehicleTag;
-    if (n.includes(":")) n = n.split(":")[1];
-    n = n.replace(/^[A-Z]\d+_/,"");
-    n = n.replace(/_/g," ");
-    n = n.replace(/([A-Z])(\d+)/g,"$1 $2");
-    return n;
-  }
-
-  return "";
-}
-
-function bestAssist(){
-  return Math.max(
-    Number(liveAssist) || 0,
-    Number(spotAssist) || 0,
-    Number(trackAssist) || 0,
-    Number(stunAssist) || 0
-  );
-}
-
-function battleValue(){
-  return (Number(damage) || 0) + bestAssist();
-}
-
-function predictedAvg(){
-  if (startAvg === null || startAvg <= 0) return null;
-  return startAvg + (battleValue() - startAvg) * EMA_K;
-}
-
-function storageKey(){
-  const key = vehicleTag || tankShortName || tankName || "unknown";
-  return "wotstat_moe_widget_" + key;
-}
-
-function saveVehicleData(){
-  if (!vehicleTag && !tankShortName && !tankName) return;
-
-  localStorage.setItem(storageKey(), JSON.stringify({
-    vehicleTag,
-    tankShortName,
-    tankName,
-    startRating,
-    startAvg,
-    moeDistribution,
-    savedAt: Date.now()
-  }));
-}
-
-function loadVehicleData(){
-  if (!vehicleTag && !tankShortName && !tankName) return false;
-
-  const raw = localStorage.getItem(storageKey());
-  if (!raw) return false;
-
-  try{
-    const data = JSON.parse(raw);
-
-    if (Date.now() - Number(data.savedAt || 0) > 1000 * 60 * 60 * 24 * 7){
-      return false;
+    function num(v, def = 0) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : def;
     }
 
-    if (startRating === null && data.startRating !== null){
-      startRating = Number(data.startRating);
+    function round(v, d = 2) {
+      return Number(v).toFixed(d);
     }
 
-    if (startAvg === null && data.startAvg !== null){
-      startAvg = Number(data.startAvg);
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
     }
 
-    if (!moeDistribution && Array.isArray(data.moeDistribution)){
-      moeDistribution = data.moeDistribution;
+    function formatInt(v) {
+      return Math.round(num(v)).toLocaleString("ru-RU");
     }
 
-    update();
-    return true;
-  }catch(e){
-    return false;
-  }
-}
-
-function deepFind(obj, keys, path = ""){
-  const found = [];
-
-  if (!obj || typeof obj !== "object") return found;
-
-  for (const k of Object.keys(obj)){
-    const full = path ? path + "." + k : k;
-
-    if (keys.includes(k)){
-      found.push({path:full,key:k,value:obj[k]});
-    }
-
-    if (obj[k] && typeof obj[k] === "object"){
-      found.push(...deepFind(obj[k], keys, full));
-    }
-  }
-
-  return found;
-}
-
-/*
-  ВАЖЛИВО:
-  Тут виправлення. WoTStat / ProTanki можуть давати таблицю і так:
-  [percent, damage]
-  і так:
-  [damage, percent]
-  або object:
-  {"71.56":2474}
-  або:
-  {"2474":71.56}
-*/
-function normalizeMoeDistribution(raw){
-  if (!raw) return null;
-
-  const candidates = [];
-
-  function pushPoint(a,b){
-    const x = num(a);
-    const y = num(b);
-    if (x === null || y === null) return;
-
-    if (x >= 0 && x <= 100 && y > 100){
-      candidates.push({percent:x, damage:y});
-    }
-
-    if (y >= 0 && y <= 100 && x > 100){
-      candidates.push({percent:y, damage:x});
-    }
-  }
-
-  if (Array.isArray(raw)){
-    for (const item of raw){
-      if (Array.isArray(item) && item.length >= 2){
-        pushPoint(item[0], item[1]);
-      }
-
-      if (item && typeof item === "object" && !Array.isArray(item)){
-        const p =
-          num(item.percent) ??
-          num(item.rating) ??
-          num(item.mark) ??
-          num(item.percentile) ??
-          num(item.moe);
-
-        const d =
-          num(item.damage) ??
-          num(item.value) ??
-          num(item.avgDamage) ??
-          num(item.movingAvgDamage) ??
-          num(item.targetDamage) ??
-          num(item.requiredDamage);
-
-        pushPoint(p,d);
-      }
-    }
-  }
-
-  if (typeof raw === "object" && !Array.isArray(raw)){
-    for (const k of Object.keys(raw)){
-      const v = raw[k];
-
-      if (typeof v === "number" || typeof v === "string"){
-        pushPoint(k,v);
-      }
-
-      if (v && typeof v === "object"){
-        const p =
-          num(v.percent) ??
-          num(v.rating) ??
-          num(v.mark) ??
-          num(v.percentile) ??
-          num(v.moe) ??
-          num(k);
-
-        const d =
-          num(v.damage) ??
-          num(v.value) ??
-          num(v.avgDamage) ??
-          num(v.movingAvgDamage) ??
-          num(v.targetDamage) ??
-          num(v.requiredDamage);
-
-        pushPoint(p,d);
-      }
-    }
-  }
-
-  const clean = candidates
-    .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 100)
-    .sort((a,b) => a.percent - b.percent);
-
-  const unique = [];
-
-  for (const p of clean){
-    const last = unique[unique.length - 1];
-
-    if (!last || Math.abs(last.percent - p.percent) > 0.001){
-      unique.push(p);
-    }
-  }
-
-  if (unique.length < 2) return null;
-
-  return unique;
-}
-
-function interpolateRatingFromAvg(avg){
-  if (avg === null || !moeDistribution || moeDistribution.length < 2){
-    return null;
-  }
-
-  const points = moeDistribution;
-
-  if (avg <= points[0].damage){
-    const a = points[0];
-    const b = points[1];
-    const slope = (b.percent - a.percent) / Math.max(1, b.damage - a.damage);
-    return clamp(a.percent - (a.damage - avg) * slope, 0, 100);
-  }
-
-  for (let i = 0; i < points.length - 1; i++){
-    const a = points[i];
-    const b = points[i + 1];
-
-    if (avg >= a.damage && avg <= b.damage){
-      const t = (avg - a.damage) / Math.max(1, b.damage - a.damage);
-      return a.percent + t * (b.percent - a.percent);
-    }
-  }
-
-  const last = points[points.length - 1];
-  const prev = points[points.length - 2];
-
-  const slope = (last.percent - prev.percent) / Math.max(1, last.damage - prev.damage);
-  return clamp(last.percent + (avg - last.damage) * slope, 0, 100);
-}
-
-function fallbackPercentFromAvg(avg){
-  if (startRating === null || startAvg === null || startAvg <= 0 || avg === null) return null;
-
-  const estimatedDamagePerOnePercent = Math.max(120, startAvg * 0.04);
-  return startRating + (avg - startAvg) / estimatedDamagePerOnePercent;
-}
-
-function percentCalc(){
-  const avg = predictedAvg();
-  if (avg === null || startRating === null) return null;
-
-  const exact = interpolateRatingFromAvg(avg);
-  if (exact !== null) return exact;
-
-  return fallbackPercentFromAvg(avg);
-}
-
-function update(){
-  const v = battleValue();
-  const avg = predictedAvg();
-
-  valueEl.textContent = fmt(v);
-  targetEl.textContent = avg !== null ? fmt(avg) : "0";
-
-  valueEl.className = "value " + (avg !== null && v >= avg ? "good" : "bad");
-
-  const p = percentCalc();
-
-  if (p !== null){
-    const safeP = clamp(p,0,100);
-
-    percentEl.textContent = safeP.toFixed(2) + "%";
-    barEl.style.width = safeP + "%";
-
-    const diff = safeP - startRating;
-
-    deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-
-    if (diff > 0.005){
-      deltaEl.className = "delta plus";
-    } else if (diff < -0.005){
-      deltaEl.className = "delta minus";
-    } else {
-      deltaEl.className = "delta neutral";
-    }
-  } else {
-    percentEl.textContent = "--.--%";
-    barEl.style.width = "0%";
-    deltaEl.textContent = "0.00%";
-    deltaEl.className = "delta neutral";
-  }
-
-  tankEl.textContent = cleanTankName();
-}
-
-function resetBattleOnly(){
-  damage = 0;
-  liveAssist = 0;
-  spotAssist = 0;
-  trackAssist = 0;
-  stunAssist = 0;
-  lastBattleResultApplied = false;
-  update();
-}
-
-function applyDossier(value){
-  if (!value || typeof value !== "object") return;
-
-  const found = deepFind(value, [
-    "damageRating",
-    "movingAvgDamage",
-    "damageBetterThanNPercent",
-    "vehicleTag",
-    "localizedShortName",
-    "localizedName",
-    "tag"
-  ]);
-
-  for (const f of found){
-    if ((f.key === "vehicleTag" || f.key === "tag") && f.value){
-      vehicleTag = String(f.value);
-    }
-
-    if (f.key === "localizedShortName" && f.value){
-      tankShortName = String(f.value);
-    }
-
-    if (f.key === "localizedName" && f.value){
-      tankName = String(f.value);
-    }
-
-    if (f.key === "damageRating"){
-      const v = num(f.value);
-      if (v !== null && v > 0 && v <= 100 && battleValue() === 0){
-        startRating = v;
-      }
-    }
-
-    if (f.key === "movingAvgDamage"){
-      const v = num(f.value);
-      if (v !== null && v > 0 && battleValue() === 0){
-        startAvg = v;
-      }
-    }
-
-    if (f.key === "damageBetterThanNPercent"){
-      const dist = normalizeMoeDistribution(f.value);
-      if (dist) moeDistribution = dist;
-    }
-  }
-
-  saveVehicleData();
-  update();
-}
-
-function applyMoeInfo(value){
-  applyDossier(value);
-}
-
-function extractPlayerIdFromBattleResult(result){
-  const personal = result?.personal || {};
-
-  for (const key of Object.keys(personal)){
-    if (key === "avatar") continue;
-
-    const r = personal[key];
-    if (!r || typeof r !== "object") continue;
-
-    if (typeof r.accountDBID !== "undefined"){
-      return Number(r.accountDBID);
-    }
-  }
-
-  return null;
-}
-
-function applyBattleResult(result){
-  if (lastBattleResultApplied) return;
-
-  const detectedId = extractPlayerIdFromBattleResult(result);
-
-  if (detectedId && !playerId){
-    playerId = detectedId;
-  }
-
-  const personal = result?.personal || {};
-
-  for (const key of Object.keys(personal)){
-    if (key === "avatar") continue;
-
-    const r = personal[key];
-    if (!r || typeof r !== "object") continue;
-
-    if (playerId && Number(r.accountDBID) !== Number(playerId)) continue;
-
-    damage = Number(r.damageDealt) || 0;
-
-    spotAssist = Number(r.damageAssistedRadio) || 0;
-    trackAssist = Number(r.damageAssistedTrack) || 0;
-    stunAssist = Number(r.damageAssistedStun) || 0;
-    liveAssist = Math.max(spotAssist, trackAssist, stunAssist);
-
-    lastBattleResultApplied = true;
-    update();
-    return;
-  }
-}
-
-function connect(){
-  ws = new WebSocket(WS_URL);
-
-  ws.onopen = () => clearTimeout(reconnectTimer);
-
-  ws.onclose = () => {
-    reconnectTimer = setTimeout(connect,1000);
-  };
-
-  ws.onerror = () => {
-    try{ ws.close(); }catch(e){}
-  };
-
-  ws.onmessage = e => {
-    let p;
-
-    try{
-      p = JSON.parse(e.data);
-    }catch(err){
-      return;
-    }
-
-    if (!p || !p.type) return;
-
-    if (p.type === "state"){
-      const path = String(p.path || "");
-      const low = path.toLowerCase();
-
-      switch(path){
-
-        case "hangar.isInHangar":
-          widgetEl.classList.toggle("hidden", !!p.value);
-          if (p.value) resetBattleOnly();
-          break;
-
-        case "battle.isInBattle":
-          widgetEl.classList.toggle("hidden", p.value === false);
+    function setState(path, value) {
+      switch (path) {
+        case "hangar.vehicle.info":
+          if (value) {
+            state.vehicleName =
+              value.localizedShortName ||
+              value.localizedName ||
+              "---";
+
+            state.vehicleTag = value.tag || null;
+
+            state.damage = 0;
+            state.assist = 0;
+            state.blocked = 0;
+            state.stun = 0;
+
+            state.startMark = null;
+            state.currentMark = null;
+          }
           break;
 
         case "battle.vehicle":
-          if (p.value?.localizedShortName) tankShortName = p.value.localizedShortName;
-          if (p.value?.localizedName) tankName = p.value.localizedName;
-          if (p.value?.tag) vehicleTag = p.value.tag;
+          if (value) {
+            state.vehicleName =
+              value.localizedShortName ||
+              value.localizedName ||
+              state.vehicleName;
 
-          loadVehicleData();
-          update();
+            state.vehicleTag = value.tag || state.vehicleTag;
+          }
+          break;
+
+        case "dossier.current":
+          if (!value) break;
+
+          // Головний захист: не брати відмітку від іншого танка
+          if (state.vehicleTag && value.vehicleTag && value.vehicleTag !== state.vehicleTag) {
+            break;
+          }
+
+          state.dossierVehicleTag = value.vehicleTag || null;
+          state.currentMark = num(value.damageRating, state.currentMark);
+          state.baseAvg = num(value.movingAvgDamage, state.baseAvg);
+          state.battlesCount = num(value.battlesCount, state.battlesCount);
+
+          if (state.startMark === null) {
+            state.startMark = state.currentMark;
+          }
+          break;
+
+        case "battle.isInBattle":
+          state.inBattle = value === true;
+          if (state.inBattle) {
+            state.damage = 0;
+            state.assist = 0;
+            state.blocked = 0;
+            state.stun = 0;
+
+            if (state.currentMark !== null) {
+              state.startMark = state.currentMark;
+            }
+          }
           break;
 
         case "battle.efficiency.damage":
-          damage = Number(p.value) || 0;
-          update();
+          state.damage = num(value);
           break;
 
         case "battle.efficiency.assist":
-          liveAssist = Number(p.value) || 0;
-          update();
+          state.assist = num(value);
           break;
 
-        case "battle.efficiency.damageAssistedRadio":
-          spotAssist = Number(p.value) || 0;
-          update();
+        case "battle.efficiency.blocked":
+          state.blocked = num(value);
           break;
 
-        case "battle.efficiency.damageAssistedTrack":
-          trackAssist = Number(p.value) || 0;
-          update();
+        case "battle.efficiency.stun":
+          state.stun = num(value);
           break;
+      }
 
-        case "battle.efficiency.damageAssistedStun":
-          stunAssist = Number(p.value) || 0;
-          update();
-          break;
+      render();
+    }
 
-        default:
-          if (low.includes("dossier") || low.includes("moe")){
-            applyDossier(p.value);
+    function handleBattleResult(value) {
+      if (!value || !value.personal) return;
+
+      let personal = null;
+
+      if (state.vehicleTag && value.personal) {
+        for (const key in value.personal) {
+          const item = value.personal[key];
+          if (!item || typeof item !== "object") continue;
+
+          if (
+            item.damageRating !== undefined ||
+            item.movingAvgDamage !== undefined ||
+            item.damageDealt !== undefined
+          ) {
+            personal = item;
+            break;
           }
+        }
+      }
 
-          if (low.includes("assist")){
-            const v = Number(p.value) || 0;
+      if (!personal) return;
 
-            if (low.includes("radio")){
-              spotAssist = v;
-            } else if (low.includes("track")){
-              trackAssist = v;
-            } else if (low.includes("stun")){
-              stunAssist = v;
-            } else {
-              liveAssist = v;
-            }
+      if (personal.damageDealt !== undefined) {
+        state.damage = num(personal.damageDealt);
+      }
 
-            update();
-          }
+      const radio = num(personal.damageAssistedRadio);
+      const track = num(personal.damageAssistedTrack);
+      const stun = num(personal.damageAssistedStun);
+      state.assist = radio + track + stun;
 
-          break;
+      if (personal.damageBlockedByArmor !== undefined) {
+        state.blocked = num(personal.damageBlockedByArmor);
+      }
+
+      if (personal.damageRating !== undefined) {
+        state.currentMark = num(personal.damageRating);
+      }
+
+      if (personal.movingAvgDamage !== undefined) {
+        state.baseAvg = num(personal.movingAvgDamage);
+      }
+
+      render();
+    }
+
+    function getBattleSum() {
+      return num(state.damage) + num(state.assist) + num(state.blocked);
+    }
+
+    function getNeedDamage() {
+      if (!state.baseAvg) return null;
+
+      // Орієнтир: показує, скільки потрібно набрати сумарки хоча б до поточного AVG
+      return Math.max(0, state.baseAvg - getBattleSum());
+    }
+
+    function getLiveMark() {
+      if (state.startMark === null) return state.currentMark;
+
+      if (!state.baseAvg || !state.battlesCount) {
+        return state.currentMark;
+      }
+
+      const sum = getBattleSum();
+
+      // Обережна live-оцінка, щоб під час бою не ламати реальний dossier.current
+      const diff = sum - state.baseAvg;
+      const factor = 1 / Math.max(80, Math.min(180, state.battlesCount / 3));
+      const live = state.startMark + diff * factor;
+
+      return clamp(live, 0, 100);
+    }
+
+    function render() {
+      const battleSum = getBattleSum();
+      const liveMark = getLiveMark();
+      const shownMark = liveMark !== null ? liveMark : state.currentMark;
+
+      el.tankName.textContent = state.vehicleName || "---";
+
+      if (shownMark !== null && Number.isFinite(shownMark)) {
+        el.markPercent.textContent = `${round(shownMark, 2)}%`;
+        el.bar.style.width = `${clamp(shownMark, 0, 100)}%`;
+      } else {
+        el.markPercent.textContent = "--.--%";
+        el.bar.style.width = "0%";
+      }
+
+      if (
+        state.startMark !== null &&
+        shownMark !== null &&
+        Number.isFinite(shownMark)
+      ) {
+        const delta = shownMark - state.startMark;
+        const sign = delta >= 0 ? "+" : "";
+        el.markDelta.textContent = `${sign}${round(delta, 2)}%`;
+        el.markDelta.className = `delta ${delta >= 0 ? "plus" : "minus"}`;
+      } else {
+        el.markDelta.textContent = "---";
+        el.markDelta.className = "delta";
+      }
+
+      const need = getNeedDamage();
+
+      el.battleSum.textContent = formatInt(battleSum);
+
+      if (need === null) {
+        el.needText.textContent = `${formatInt(battleSum)} / ---`;
+      } else {
+        el.needText.textContent = `${formatInt(battleSum)} / ${formatInt(state.baseAvg)}`;
       }
     }
 
-    if (p.type === "trigger" && p.path === "battle.onBattleResult"){
-      applyBattleResult(p.value);
+    function handleMessage(raw) {
+      let msg;
+
+      try {
+        msg = typeof raw === "string" ? JSON.parse(raw) : raw;
+      } catch (e) {
+        return;
+      }
+
+      if (!msg) return;
+
+      if (msg.type === "init" && Array.isArray(msg.states)) {
+        msg.states.forEach(s => {
+          if (s && s.path) setState(s.path, s.value);
+        });
+        return;
+      }
+
+      if (msg.type === "state") {
+        setState(msg.path, msg.value);
+        return;
+      }
+
+      if (msg.type === "trigger") {
+        if (msg.path === "battle.onBattleResult") {
+          handleBattleResult(msg.value);
+        }
+      }
     }
-  };
-}
 
-update();
-connect();
-</script>
+    function connect() {
+      let ws;
 
+      try {
+        ws = new WebSocket(WS_URL);
+      } catch (e) {
+        setTimeout(connect, 2000);
+        return;
+      }
+
+      ws.onopen = () => {
+        state.connected = true;
+      };
+
+      ws.onmessage = (event) => {
+        handleMessage(event.data);
+      };
+
+      ws.onclose = () => {
+        state.connected = false;
+        setTimeout(connect, 1500);
+      };
+
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch (e) {}
+      };
+    }
+
+    render();
+    connect();
+  </script>
 </body>
 </html>
