@@ -130,7 +130,6 @@ body{
 <body>
 
 <div id="widget" class="widget">
-
   <div class="top">
     <div id="percent" class="percent">--.--%</div>
     <div id="delta" class="delta neutral">AUTO</div>
@@ -151,14 +150,11 @@ body{
   </div>
 
   <div id="tank" class="tank"></div>
-
 </div>
 
 <script>
 const WS_URL = "ws://localhost:38200";
-
-const LIVE_START_DROP = 0.78;
-const LIVE_GAIN_AT_TARGET = 1.55;
+const EMA_K = 2 / 101;
 
 const el = id => document.getElementById(id);
 
@@ -192,7 +188,7 @@ let moeDistribution = null;
 let lastBattleResultApplied = false;
 
 function fmt(n){
-  return Number(n || 0).toLocaleString("uk-UA");
+  return Number(Math.round(n || 0)).toLocaleString("uk-UA");
 }
 
 function num(v){
@@ -238,6 +234,11 @@ function battleValue(){
   return (Number(damage) || 0) + bestAssist();
 }
 
+function predictedAvg(){
+  if (startAvg === null || startAvg <= 0) return null;
+  return startAvg + (battleValue() - startAvg) * EMA_K;
+}
+
 function storageKey(){
   const key = vehicleTag || tankShortName || tankName || "unknown";
   return "wotstat_moe_widget_" + key;
@@ -245,7 +246,6 @@ function storageKey(){
 
 function saveVehicleData(){
   if (!vehicleTag && !tankShortName && !tankName) return;
-  if (startRating === null || startAvg === null) return;
 
   const data = {
     vehicleTag,
@@ -322,34 +322,47 @@ function normalizeMoeDistribution(raw){
       if (Array.isArray(item) && item.length >= 2){
         const p = num(item[0]);
         const d = num(item[1]);
-        if (p !== null && d !== null) points.push({percent:p, damage:d});
+
+        if (p !== null && d !== null){
+          points.push({percent:p, damage:d});
+        }
       } else if (item && typeof item === "object"){
         const p =
           num(item.percent) ??
           num(item.rating) ??
           num(item.mark) ??
-          num(item.key);
+          num(item.key) ??
+          num(item.percentile);
 
         const d =
           num(item.damage) ??
           num(item.value) ??
           num(item.avgDamage) ??
           num(item.movingAvgDamage) ??
-          num(item.targetDamage);
+          num(item.targetDamage) ??
+          num(item.requiredDamage);
 
-        if (p !== null && d !== null) points.push({percent:p, damage:d});
+        if (p !== null && d !== null){
+          points.push({percent:p, damage:d});
+        }
       }
     }
   } else if (typeof raw === "object"){
     for (const k of Object.keys(raw)){
       const p = num(k);
       const d = num(raw[k]);
-      if (p !== null && d !== null) points.push({percent:p, damage:d});
+
+      if (p !== null && d !== null){
+        points.push({percent:p, damage:d});
+      }
     }
   }
 
-  points.sort((a,b) => a.percent - b.percent);
-  return points.length ? points : null;
+  const clean = points
+    .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 0)
+    .sort((a,b) => a.percent - b.percent);
+
+  return clean.length ? clean : null;
 }
 
 function interpolateRatingFromAvg(avg){
@@ -373,60 +386,53 @@ function interpolateRatingFromAvg(avg){
     }
   }
 
-  return points[points.length - 1].percent;
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+
+  const slope = (last.percent - prev.percent) / Math.max(1, last.damage - prev.damage);
+  return clamp(last.percent + (avg - last.damage) * slope, 0, 100);
 }
 
-function getTarget(){
-  if (moeDistribution && moeDistribution.length){
-    const current = startRating ?? 0;
+function fallbackPercentFromAvg(avg){
+  if (startRating === null || startAvg === null || startAvg <= 0 || avg === null) return null;
 
-    for (const p of moeDistribution){
-      if (p.percent > current){
-        return Math.round(p.damage);
-      }
-    }
-
-    return Math.round(moeDistribution[moeDistribution.length - 1].damage);
-  }
-
-  if (startAvg !== null){
-    return Math.round(startAvg);
-  }
-
-  return 0;
+  /*
+    Запасний розрахунок тільки якщо moeDistribution ще не прийшов.
+    Він рахує не "фіксовані -0.78", а від зміни AVG.
+    Для більшості танків біля 80-90% це набагато ближче до реального MoE.
+  */
+  const estimatedDamagePerOnePercent = Math.max(85, startAvg * 0.03);
+  return startRating + (avg - startAvg) / estimatedDamagePerOnePercent;
 }
 
 function percentCalc(){
-  if (startRating === null || startAvg === null || startAvg <= 0) return null;
+  const avg = predictedAvg();
+  if (avg === null || startRating === null) return null;
 
-  const avgNew = startAvg + (battleValue() - startAvg) * (2 / 101);
-  const exact = interpolateRatingFromAvg(avgNew);
+  const exact = interpolateRatingFromAvg(avg);
+  if (exact !== null) return exact;
 
-  if (exact !== null){
-    return exact;
-  }
-
-  return (startRating - LIVE_START_DROP) + (battleValue() / startAvg) * LIVE_GAIN_AT_TARGET;
+  return fallbackPercentFromAvg(avg);
 }
 
 function update(){
   const v = battleValue();
-  const target = getTarget();
+  const avg = predictedAvg();
 
   valueEl.textContent = fmt(v);
-  targetEl.textContent = target > 0 ? fmt(target) : "0";
+  targetEl.textContent = avg !== null ? fmt(avg) : "0";
 
-  valueEl.className = "value " + (target > 0 && v >= target ? "good" : "bad");
+  valueEl.className = "value " + (avg !== null && v >= avg ? "good" : "bad");
 
   const p = percentCalc();
 
   if (p !== null){
     const safeP = clamp(p,0,100);
 
-    percentEl.textContent = p.toFixed(2) + "%";
+    percentEl.textContent = safeP.toFixed(2) + "%";
     barEl.style.width = safeP + "%";
 
-    const diff = p - startRating;
+    const diff = safeP - startRating;
 
     deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
 
@@ -499,9 +505,7 @@ function applyMoeInfo(value){
     "damageBetterThanNPercent",
     "damageRating",
     "movingAvgDamage",
-    "vehicleTag",
-    "targetDamage",
-    "requiredDamage"
+    "vehicleTag"
   ]);
 
   for (const f of found){
@@ -520,11 +524,6 @@ function applyMoeInfo(value){
     }
 
     if (f.key === "movingAvgDamage"){
-      const v = num(f.value);
-      if (v !== null && v > 0) startAvg = v;
-    }
-
-    if ((f.key === "targetDamage" || f.key === "requiredDamage") && startAvg === null){
       const v = num(f.value);
       if (v !== null && v > 0) startAvg = v;
     }
@@ -582,7 +581,13 @@ function applyBattleResult(result){
       if (Number.isFinite(v) && v > 0) startAvg = v;
     }
 
+    if (typeof r.damageRating !== "undefined"){
+      const v = Number(r.damageRating);
+      if (Number.isFinite(v) && v > 0 && v <= 100) startRating = v;
+    }
+
     lastBattleResultApplied = true;
+    saveVehicleData();
     update();
     return;
   }
