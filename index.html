@@ -1,126 +1,186 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap');
-        body { margin: 0; background: transparent; font-family: 'Roboto', sans-serif; color: white; overflow: hidden; }
-        .moe-container {
-            display: flex; flex-direction: column;
-            background: rgba(15, 15, 15, 0.9);
-            padding: 15px 25px; border-left: 6px solid #36ff50;
-            width: fit-content; border-radius: 0 10px 10px 0;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
-        }
-        .tank-name { font-size: 16px; color: #888; text-transform: uppercase; margin-bottom: 2px; }
-        .main-row { display: flex; align-items: baseline; gap: 15px; }
-        .current-moe { font-size: 60px; line-height: 1; font-weight: 900; color: #fff; }
-        .delta { font-size: 24px; font-weight: bold; }
-        .plus { color: #36ff50; }
-        .minus { color: #ff4040; }
-        .info-row { 
-            display: flex; justify-content: space-between; 
-            margin-top: 10px; font-size: 18px; color: #eee;
-            border-top: 1px solid #333; padding-top: 8px; gap: 30px;
-        }
-        .label { color: #666; font-size: 13px; text-transform: uppercase; margin-right: 5px; }
-        #status-bar { font-size: 9px; color: #333; margin-top: 5px; text-align: right; }
-    </style>
-</head>
-<body>
+  <meta charset="UTF-8" />
+  <title>Віджет Відмітки - prIG0Rod Edition</title>
 
-<div class="moe-container">
-    <div class="tank-name" id="tank-name">READY FOR BATTLE</div>
-    <div class="main-row">
-        <div class="current-moe" id="moe-val">0.00%</div>
-        <div id="moe-delta" class="delta">+0.00%</div>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg-color: rgba(0,0,0,0.0);
+      --text-color:#ffffff;
+      --hp-bg: rgba(0,0,0,0.35);
+      --hp-border: rgba(255,255,255,0.18);
+      --hp-fill: #36ff50; /* Зелений як у WotStat */
+      --widget-width: 360px;
+      --stroke: rgba(0,0,0,0.90);
+      --stroke-w: 1px;
+    }
+
+    body{
+      margin:0; padding:10px; height:100vh;
+      background:var(--bg-color); color:var(--text-color);
+      display:flex; justify-content:flex-start; align-items:flex-start;
+      font-family: "Roboto Condensed", Arial, sans-serif;
+    }
+
+    .battle-widget{
+      width: var(--widget-width);
+      display:flex; flex-direction:column;
+      align-items:flex-start; gap: 0.1rem;
+      font-weight: 700;
+    }
+
+    /* Блок відмітки (Великі цифри) */
+    .moe-section {
+        margin-bottom: 5px;
+    }
+    .moe-value {
+        font-size: 42px;
+        line-height: 1;
+        color: #ffffff;
+        -webkit-text-stroke: 1.5px var(--stroke);
+        filter: drop-shadow(0 0 5px rgba(54,255,80,0.5));
+    }
+    .moe-delta {
+        font-size: 20px;
+        margin-left: 10px;
+    }
+    .plus { color: #36ff50; }
+    .minus { color: #ff4040; }
+
+    .stat-block{
+      display:flex; align-items:center;
+      gap:.6rem; height: 30px;
+    }
+
+    .stat-label{
+      width: 40px; flex: 0 0 40px;
+      display:flex; justify-content:center; align-items:center;
+    }
+
+    .stat-label svg{
+      width: 22px; height: 22px; fill: #ffffff;
+      filter: drop-shadow(0 0 3px rgba(54,255,80,0.6));
+    }
+
+    .stat-value{
+      font-size: 22px;
+      -webkit-text-stroke: var(--stroke-w) var(--stroke);
+      paint-order: stroke fill;
+    }
+
+    .tank-name {
+        color: #ff9d00; /* Помаранчевий для назви танка */
+        font-size: 18px;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="battle-widget">
+    
+    <div id="tank-name" class="tank-name">Чекаю бій...</div>
+
+    <div class="moe-section">
+        <span id="moe-value" class="moe-value">0.00%</span>
+        <span id="moe-delta" class="moe-delta"></span>
     </div>
-    <div class="info-row">
-        <div><span class="label">SUM:</span><span id="current-total">0</span></div>
-        <div><span class="label">TARGET:</span><span id="target-total" style="color: #36ff50;">---</span></div>
+
+    <div class="stat-block">
+      <div class="stat-label">
+        <svg viewBox="0 0 32 32"><path d="M9.361 11.32a.865.865 0 0 1 0-1.225l.734-.734a.866.866 0 0 1 1.224 0l3.672 3.672a.865.865 0 0 1 0 1.224l-.734.734a.865.865 0 0 1-1.224 0L9.361 11.32Zm7.648 7.647a.865.865 0 0 1 0-1.224l.734-.734a.866.866 0 0 1 1.224 0l3.672 3.672a.865.865 0 0 1 0 1.224l-.734.734a.865.865 0 0 1-1.224 0l-3.672-3.672Z"/></svg>
+      </div>
+      <div id="combined-value" class="stat-value">0</div>
+      <div style="font-size: 12px; color: #888; margin-left: 10px;">ТРЕБА: <span id="target-value">0</span></div>
     </div>
-    <div id="status-bar">HYBRID MODE ACTIVE</div>
-</div>
+
+    <div class="stat-block">
+      <div class="stat-label">
+        <svg viewBox="0 0 24 24"><path d="M12 2c-3.9 0-7 3.1-7 7 0 5.2 6 12.6 6.3 12.9.4.5 1.1.5 1.5 0C13 21.6 19 14.2 19 9c0-3.9-3.1-7-7-7zm0 10a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>
+      </div>
+      <div id="map-name" class="stat-value">-</div>
+    </div>
+
+  </div>
 
 <script>
-    const API_KEY = '1d3c9ce39ebb57594f182ed1ad88c03f';
-    const ACCOUNT_ID = '594760646'; // prIG0Rod
-    
-    let state = {
-        startMoe: 0,
-        tankId: null,
-        k: 0.019802,
-        expected: 2800
-    };
+  const WS_URL = "ws://localhost:38200";
 
-    async function fetchFromWG(tId) {
-        try {
-            const p = "https://api.allorigins.win/get?url=";
-            const u = `https://api.worldoftanks.eu/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tId}&fields=achievements`;
-            const r = await fetch(p + encodeURIComponent(u));
-            const j = await r.json();
-            const d = JSON.parse(j.contents);
-            if (d.data[ACCOUNT_ID]) {
-                state.startMoe = d.data[ACCOUNT_ID][0].achievements.damage_rating;
-                updateView(0, 0);
-            }
-        } catch(e) { console.log("WG API Busy"); }
-    }
+  const tankEl = document.getElementById("tank-name");
+  const moeEl = document.getElementById("moe-value");
+  const deltaEl = document.getElementById("moe-delta");
+  const combinedEl = document.getElementById("combined-value");
+  const targetEl = document.getElementById("target-value");
+  const mapEl = document.getElementById("map-name");
 
-    function updateView(dmg, ast, target) {
-        const total = dmg + ast;
-        let moe = state.startMoe;
-        
-        // Якщо WotStat не дав готовий MoE, рахуємо самі
-        let diff = (total - state.expected) * (state.k / 100);
-        if (total === 0) diff = 0;
-        
-        let finalMoe = (moe + diff).toFixed(2);
-        
-        document.getElementById('moe-val').innerText = finalMoe + "%";
-        document.getElementById('current-total').innerText = total;
-        document.getElementById('target-total').innerText = target || state.expected;
-        
-        const dEl = document.getElementById('moe-delta');
-        dEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-        dEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
-    }
+  let ws;
+  let startMoe = null;
 
-    function connect() {
-        const ws = new WebSocket("ws://localhost:38200");
-        
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            const val = data.value || {};
-            const battle = val.battle || {};
-            
-            // 1. Танк
-            const tId = val.tankId || val.arena?.playerVehicle?.tankId;
-            if (tId && state.tankId !== tId) {
-                state.tankId = tId;
-                document.getElementById('tank-name').innerText = val.name || val.arena?.playerVehicle?.name || "TANK " + tId;
-                fetchFromWG(tId);
-            }
+  function connectWS(){
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => console.log("Connected to WotStat");
+    ws.onclose = () => setTimeout(connectWS, 1000);
+    ws.onmessage = handleMessage;
+  }
 
-            // 2. Дані з WotStat (пріоритет)
-            if (battle.efficiency && battle.efficiency.gunMark) {
-                const gm = battle.efficiency.gunMark;
-                state.startMoe = gm.currentMoe - (( (battle.efficiency.damage + battle.efficiency.assist) - gm.targetDamage) * (state.k/100)); // Реверс для точності
-                updateView(battle.efficiency.damage, battle.efficiency.assist, Math.round(gm.targetDamage));
-            } else {
-                // 3. Якщо WotStat ще не роздуплився, беремо сиру шкоду
-                let d = val.damage || battle.efficiency?.damage || 0;
-                let a = val.assist || battle.efficiency?.assist || 0;
-                if (data.path === "battle.efficiency.damage") d = data.value;
-                if (data.path === "battle.efficiency.assist") a = data.value;
-                if (state.startMoe > 0) updateView(d, a);
-            }
-        };
+  function handleMessage(e){
+    try {
+      const p = JSON.parse(e.data);
+      if (p.type !== "state") return;
 
-        ws.onclose = () => setTimeout(connect, 2000);
-    }
+      const val = p.value || {};
+      const battle = val.battle || {};
+      const arena = val.arena || {};
 
-    connect();
+      // 1. Назва танка та мапа
+      if (arena.playerVehicle) tankEl.textContent = arena.playerVehicle.name;
+      if (arena.localizedName) mapEl.textContent = arena.localizedName;
+
+      // 2. Дані відмітки (Gun Mark) з WotStat
+      if (battle.efficiency && battle.efficiency.gunMark) {
+          const gm = battle.efficiency.gunMark;
+          
+          // Поточний %
+          const currentMoe = gm.currentMoe || 0;
+          moeEl.textContent = currentMoe.toFixed(2) + "%";
+
+          // Фіксуємо початкову відмітку для дельти
+          if (startMoe === null && currentMoe > 0) startMoe = currentMoe;
+
+          // Рахуємо дельту
+          if (startMoe !== null) {
+              const diff = currentMoe - startMoe;
+              deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
+              deltaEl.className = "moe-delta " + (diff >= 0 ? "plus" : "minus");
+          }
+
+          // Сумарка та "Скільки треба"
+          const dmg = battle.efficiency.damage || 0;
+          const ast = battle.efficiency.assist || 0;
+          combinedEl.textContent = (dmg + ast).toLocaleString();
+          targetEl.textContent = Math.round(gm.targetDamage || 0).toLocaleString();
+      }
+
+      // 3. Обробка виходу в ангар
+      if (p.path === "hangar.isInHangar" && p.value === true) {
+          startMoe = null;
+          tankEl.textContent = "Чекаю бій...";
+          moeEl.textContent = "0.00%";
+          deltaEl.textContent = "";
+          combinedEl.textContent = "0";
+          targetEl.textContent = "0";
+      }
+
+    } catch(err) { console.error(err); }
+  }
+
+  connectWS();
 </script>
 </body>
 </html>
