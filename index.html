@@ -5,107 +5,97 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@900&display=swap');
         body { margin: 0; background: transparent; font-family: 'Roboto', sans-serif; color: white; overflow: hidden; }
+        
         .moe-container {
             display: flex; flex-direction: column;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 15px 25px; border-left: 6px solid #ff9d00;
-            width: 350px; border-radius: 0 8px 8px 0;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 15px 25px;
+            border-left: 6px solid #36ff50;
+            width: fit-content;
+            border-radius: 0 10px 10px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
         }
-        .tank-name { font-size: 18px; color: #ff9d00; text-transform: uppercase; margin-bottom: 2px; }
+
+        .tank-name { font-size: 16px; color: #aaa; text-transform: uppercase; margin-bottom: 2px; }
         .main-row { display: flex; align-items: baseline; gap: 15px; }
-        .current-moe { font-size: 64px; line-height: 1; font-weight: 900; }
-        .delta { font-size: 28px; font-weight: bold; }
-        .plus { color: #5eff00; }
+        .current-moe { font-size: 60px; line-height: 1; font-weight: 900; color: #fff; }
+        
+        .delta { font-size: 24px; font-weight: bold; }
+        .plus { color: #36ff50; }
         .minus { color: #ff4040; }
-        .battle-info { font-size: 20px; margin-top: 10px; color: #aaa; border-top: 1px solid #333; padding-top: 8px; }
-        #status { font-size: 10px; color: #444; margin-top: 5px; font-family: monospace; }
+
+        .info-row { 
+            display: flex; justify-content: space-between; 
+            margin-top: 10px; font-size: 18px; color: #eee;
+            border-top: 1px solid #333; padding-top: 8px; gap: 20px;
+        }
+        .label { color: #888; font-size: 14px; text-transform: uppercase; margin-right: 5px; }
+        .val { font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="moe-container">
-    <div class="tank-name" id="tank">SEARCHING BATTLE...</div>
+    <div class="tank-name" id="tank-name">Очікування...</div>
     <div class="main-row">
-        <div class="current-moe" id="moe">0.00%</div>
-        <div class="delta" id="delta">+0.00%</div>
+        <div class="current-moe" id="moe-val">0.00%</div>
+        <div id="moe-delta" class="delta">+0.00%</div>
     </div>
-    <div class="battle-info">SUM: <span id="total" style="color:white">0</span></div>
-    <div id="status">ST: Waiting for WotStat data...</div>
+    
+    <div class="info-row">
+        <div><span class="label">Сумарка:</span><span class="val" id="current-total">0</span></div>
+        <div><span class="label">Треба:</span><span class="val" id="target-total" style="color: #36ff50;">0</span></div>
+    </div>
 </div>
 
 <script>
-    const API_KEY = '1d3c9ce39ebb57594f182ed1ad88c03f';
-    const ACCOUNT_ID = '594760646'; // твій ID
-    
-    let state = { startMoe: 0, tankId: null, k: 0.019802, expected: 3000 };
-
-    function setStatus(msg) { document.getElementById('status').innerText = "ST: " + msg; }
-
-    async function loadMoe(tankId) {
-        setStatus(`GETTING MOE FOR ${tankId}...`);
-        try {
-            // Використовуємо проксі з випадковим числом, щоб не кешувало старі дані
-            const url = `https://api.worldoftanks.eu/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tankId}&fields=achievements`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&_=${Date.now()}`;
-            
-            const response = await fetch(proxyUrl);
-            const json = await response.json();
-            const data = JSON.parse(json.contents);
-            
-            if (data.status === "ok" && data.data[ACCOUNT_ID]) {
-                state.startMoe = data.data[ACCOUNT_ID][0].achievements.damage_rating;
-                setStatus(`SUCCESS! MOE: ${state.startMoe}%`);
-                updateUI(0);
-            } else {
-                setStatus("API ERROR: No data for this tank.");
-            }
-        } catch (e) { setStatus("NETWORK ERROR: Check API Key or Proxy."); }
-    }
-
-    function updateUI(total) {
-        let diff = (total - state.expected) * (state.k / 100);
-        if (total === 0) diff = 0;
-
-        const currentMoe = (state.startMoe + diff).toFixed(2);
-        document.getElementById('moe').innerText = currentMoe + "%";
-        document.getElementById('total').innerText = total;
-        
-        const deltaEl = document.getElementById('delta');
-        deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-        deltaEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
-    }
+    let startMoe = 0;
 
     function connect() {
+        // Підключаємось до локального сервера WotStat
         const socket = new WebSocket("ws://localhost:38200");
-        
-        socket.onopen = () => setStatus("CONNECTED. READY.");
-        
+
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
-            // Пряме сканування всього об'єкта
-            const val = data.value || {};
-            
-            // Шукаємо танк у будь-якому місці
-            const tankId = val.tankId || val.arena?.playerVehicle?.tankId || val.playerVehicle?.tankId;
-            const tankName = val.name || val.arena?.playerVehicle?.name || val.playerVehicle?.name;
+            // WotStat шле повний стан у полі "value", якщо шлях порожній або "battle"
+            if (data.type === "state") {
+                const state = data.value;
+                const battle = state.battle || {};
+                const arena = state.arena || {};
+                
+                // 1. Отримуємо назву танка
+                if (arena.playerVehicle) {
+                    document.getElementById('tank-name').innerText = arena.playerVehicle.name;
+                }
 
-            if (tankId && state.tankId !== tankId) {
-                state.tankId = tankId;
-                document.getElementById('tank').innerText = tankName || "TANK " + tankId;
-                loadMoe(tankId);
-            }
+                // 2. Отримуємо дані відмітки (Gun Marks)
+                // WotStat рахує це автоматично
+                if (battle.efficiency && battle.efficiency.gunMark) {
+                    const gm = battle.efficiency.gunMark;
+                    
+                    // Поточний % відмітки (прогноз)
+                    const currentMoe = gm.currentMoe || 0;
+                    if (startMoe === 0) startMoe = currentMoe;
 
-            // Шукаємо шкоду та асист
-            let dmg = val.damage || val.battle?.efficiency?.damage || 0;
-            let ast = val.assist || val.battle?.efficiency?.assist || 0;
-            
-            // Якщо WotStat шле через path
-            if (data.path === "battle.efficiency.damage") dmg = data.value;
-            if (data.path === "battle.efficiency.assist") ast = data.value;
+                    document.getElementById('moe-val').innerText = currentMoe.toFixed(2) + "%";
 
-            if (state.startMoe > 0 && (dmg > 0 || ast > 0)) {
-                updateUI(dmg + ast);
+                    // Розрахунок дельти
+                    const diff = currentMoe - startMoe;
+                    const deltaEl = document.getElementById('moe-delta');
+                    deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
+                    deltaEl.className = "delta " + (diff >= 0 ? "plus" : "minus");
+
+                    // 3. Сумарка та "Ціль" (скільки треба для росту)
+                    const dmg = battle.efficiency.damage || 0;
+                    const ast = battle.efficiency.assist || 0;
+                    document.getElementById('current-total').innerText = (dmg + ast);
+                    
+                    // "Планка" відмітки (скільки треба тримати для поточного %)
+                    if (gm.targetDamage) {
+                        document.getElementById('target-total').innerText = Math.round(gm.targetDamage);
+                    }
+                }
             }
         };
 
