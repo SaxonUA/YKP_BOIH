@@ -9,29 +9,28 @@
             display: flex; flex-direction: column;
             background: rgba(0, 0, 0, 0.85);
             padding: 15px 25px; border-left: 6px solid #ff9d00;
-            width: fit-content; border-radius: 0 8px 8px 0;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            width: 320px; border-radius: 0 8px 8px 0;
         }
-        .tank-name { font-size: 18px; color: #ff9d00; text-transform: uppercase; margin-bottom: 2px; }
+        .tank-name { font-size: 18px; color: #ff9d00; text-transform: uppercase; margin-bottom: 2px; height: 22px; }
         .main-row { display: flex; align-items: baseline; gap: 15px; }
         .current-moe { font-size: 64px; line-height: 1; font-weight: 900; }
         .delta { font-size: 28px; font-weight: bold; }
         .plus { color: #5eff00; }
         .minus { color: #ff4040; }
         .battle-info { font-size: 20px; margin-top: 10px; color: #aaa; border-top: 1px solid #444; padding-top: 8px; }
-        #status { font-size: 11px; color: #777; margin-top: 5px; font-family: monospace; }
+        #status { font-size: 10px; color: #555; margin-top: 5px; font-family: monospace; }
     </style>
 </head>
 <body>
 
 <div class="moe-container">
-    <div class="tank-name" id="tank">ОЧІКУВАННЯ ДАНИХ...</div>
+    <div class="tank-name" id="tank">READY...</div>
     <div class="main-row">
         <div class="current-moe" id="moe">0.00%</div>
         <div class="delta" id="delta">+0.00%</div>
     </div>
-    <div class="battle-info">СУМАРНА: <span id="total" style="color:white">0</span></div>
-    <div id="status">Status: Connecting...</div>
+    <div class="battle-info">DAMAGE: <span id="total" style="color:white">0</span></div>
+    <div id="status">Status: Start...</div>
 </div>
 
 <script>
@@ -42,44 +41,37 @@
         startMoe: 0,
         tankId: null,
         k: 0.019802,
-        expected: 3000 
+        expected: 3200 
     };
 
-    function setStatus(msg) { document.getElementById('status').innerText = "Status: " + msg; }
+    function setStatus(msg) { document.getElementById('status').innerText = "ST: " + msg; }
 
     async function loadMoe(tankId) {
-        setStatus(`Запит MoE для танка ${tankId}...`);
+        setStatus(`FETCH MOE FOR ${tankId}...`);
         try {
-            // Використовуємо інший проксі, якщо попередній лагав
+            // Використовуємо corsproxy.io — він надійніший
             const url = `https://api.worldoftanks.eu/wot/tanks/stats/?application_id=${API_KEY}&account_id=${ACCOUNT_ID}&tank_id=${tankId}&fields=achievements`;
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&timestamp=${Date.now()}`;
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
             
             const response = await fetch(proxyUrl);
-            const json = await response.json();
-            const data = JSON.parse(json.contents);
+            const data = await response.json();
             
-            if (data.status === "ok" && data.data[ACCOUNT_ID] && data.data[ACCOUNT_ID][0]) {
+            if (data.status === "ok" && data.data[ACCOUNT_ID]) {
                 state.startMoe = data.data[ACCOUNT_ID][0].achievements.damage_rating;
-                setStatus(`УСПІХ! Старт: ${state.startMoe}%`);
+                setStatus(`LOADED: ${state.startMoe}%`);
                 updateUI(0, 0);
-            } else {
-                setStatus("API: Танк не знайдено (зіграй хоч 1 бій на ньому)");
             }
-        } catch (e) {
-            setStatus("API ERROR: Перевір інтернет або ключ");
-        }
+        } catch (e) { setStatus("API ERR: CORS BLOCKED"); }
     }
 
     function updateUI(dmg, ast) {
         const total = dmg + ast;
-        // Спрощена формула EMA для реального часу
         let diff = (total - state.expected) * (state.k / 100);
         if (total === 0) diff = 0;
 
         const currentMoe = (state.startMoe + diff).toFixed(2);
-        
         document.getElementById('moe').innerText = currentMoe + "%";
-        document.getElementById('total').innerText = total.toLocaleString();
+        document.getElementById('total').innerText = total;
         
         const deltaEl = document.getElementById('delta');
         deltaEl.innerText = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
@@ -90,35 +82,40 @@
         const socket = new WebSocket("ws://localhost:38200");
         let d = 0, a = 0;
 
-        socket.onopen = () => setStatus("WotStat OK. Чекаю дані від гри...");
+        socket.onopen = () => setStatus("WS CONNECTED");
         
         socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             
+            // Агресивний пошук даних
             if (msg.type === "state") {
-                // Перевіряємо танк у всіх можливих полях повідомлення
-                const vehicle = msg.value?.playerVehicle || msg.value?.arena?.playerVehicle;
+                const val = msg.value;
                 
-                if (vehicle && vehicle.tankId) {
-                    document.getElementById('tank').innerText = vehicle.name;
-                    if (state.tankId !== vehicle.tankId) {
-                        state.tankId = vehicle.tankId;
-                        loadMoe(vehicle.tankId);
-                    }
+                // Перевіряємо танк
+                const tId = val?.playerVehicle?.tankId || val?.arena?.playerVehicle?.tankId;
+                const tName = val?.playerVehicle?.name || val?.arena?.playerVehicle?.name;
+                
+                if (tId && state.tankId !== tId) {
+                    state.tankId = tId;
+                    document.getElementById('tank').innerText = tName || "TANK " + tId;
+                    loadMoe(tId);
                 }
 
-                // Оновлення шкоди
-                if (msg.path && msg.path.includes("damage")) d = msg.value;
-                if (msg.path && msg.path.includes("assist")) a = msg.value;
+                // Перевіряємо шкоду (WotStat може слати через path або всередині value)
+                if (msg.path === "battle.efficiency.damage") d = msg.value;
+                if (msg.path === "battle.efficiency.assist") a = msg.value;
                 
+                // Якщо прийшов пакет зі всіма даними відразу
+                if (val?.battle?.efficiency) {
+                    d = val.battle.efficiency.damage || d;
+                    a = val.battle.efficiency.assist || a;
+                }
+
                 if (state.startMoe > 0) updateUI(d, a);
             }
         };
 
-        socket.onclose = () => {
-            setStatus("WotStat OFF. Перепідключення...");
-            setTimeout(connect, 2000);
-        };
+        socket.onclose = () => setTimeout(connect, 2000);
     }
 
     connect();
