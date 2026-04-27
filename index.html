@@ -45,7 +45,7 @@
 
 <script>
 const WS_URL = "ws://localhost:38200";
-const EMA_K = 2 / 101; // Стандарт для 100 боїв
+const EMA_K = 2 / 101; 
 
 const el = id => document.getElementById(id);
 const widgetEl = el("widget"), percentEl = el("percent"), deltaEl = el("delta");
@@ -53,7 +53,7 @@ const barEl = el("bar"), valueEl = el("value"), targetEl = el("target"), tankEl 
 
 let damage = 0, liveAssist = 0, spotAssist = 0, trackAssist = 0, stunAssist = 0;
 let startRating = null, startAvg = null, moeDistribution = null;
-let tankShortName = null, tankName = null;
+let tankShortName = null;
 
 function fmt(n) { return Number(Math.round(n || 0)).toLocaleString("uk-UA"); }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
@@ -61,13 +61,13 @@ function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function bestAssist() { return Math.max(liveAssist, spotAssist, trackAssist, stunAssist); }
 function battleValue() { return damage + bestAssist(); }
 
-// Головна формула EMA
 function predictedAvg() {
     if (startAvg === null) return null;
+    // EMA прогноз: падіння на початку бою
     return startAvg + (battleValue() - startAvg) * EMA_K;
 }
 
-// Динамічне визначення ціни 1% відмітки для конкретного танка
+// ДИНАМІЧНИЙ розрахунок ціни відсотка
 function getDmgPerPercent() {
     if (moeDistribution && moeDistribution.length >= 2) {
         const p1 = moeDistribution[0];
@@ -76,8 +76,11 @@ function getDmgPerPercent() {
         const pDiff = Math.abs(p2.percent - p1.percent);
         if (pDiff > 0) return dDiff / pDiff;
     }
-    // Якщо даних немає, використовуємо безпечне середнє (залежить від рівня сумарки)
-    return startAvg ? startAvg * 0.05 : 60; 
+    
+    // Адаптивний Fallback, щоб не було всюди -0.40%
+    if (startAvg < 1500) return startAvg * 0.025; 
+    if (startAvg < 2800) return startAvg * 0.022; // Для сумарки ~2600 дасть падіння ~0.90%
+    return startAvg * 0.055; // Для сумарки 3700+ дасть падіння ~0.40%
 }
 
 function update() {
@@ -90,7 +93,7 @@ function update() {
 
     if (startRating !== null && curAvg !== null) {
         const dmgPerPct = getDmgPerPercent();
-        // Розраховуємо новий відсоток на основі відхилення від startAvg
+        // Розрахунок рейтингу на основі дельти прогнозу
         const currentRating = startRating + (curAvg - startAvg) / dmgPerPct;
         const safeP = Math.max(0, Math.min(100, currentRating));
 
@@ -99,10 +102,10 @@ function update() {
 
         const diff = currentRating - startRating;
         deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-        deltaEl.className = "delta " + (diff > 0.005 ? "plus" : (diff < -0.005 ? "minus" : "neutral"));
+        deltaEl.className = "delta " + (diff > 0.001 ? "plus" : (diff < -0.001 ? "minus" : "neutral"));
     }
     
-    if (tankShortName) tankEl.textContent = tankShortName.replace(/([A-Z])(\d+)/g,"$1 $2");
+    if (tankShortName) tankEl.textContent = tankShortName;
 }
 
 function connect() {
@@ -112,7 +115,10 @@ function connect() {
         if (p.type === "state") {
             const v = p.value;
             switch(p.path) {
-                case "battle.isInBattle": widgetEl.classList.toggle("hidden", !v); break;
+                case "battle.isInBattle": 
+                    if (v) { widgetEl.classList.remove("hidden"); } 
+                    else { widgetEl.classList.add("hidden"); damage=0; liveAssist=0; spotAssist=0; trackAssist=0; stunAssist=0; }
+                    break;
                 case "battle.vehicle": tankShortName = v?.localizedShortName; update(); break;
                 case "battle.efficiency.damage": damage = num(v) || 0; update(); break;
                 case "battle.efficiency.damageAssistedRadio": spotAssist = num(v) || 0; update(); break;
