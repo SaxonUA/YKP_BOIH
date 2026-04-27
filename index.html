@@ -14,12 +14,14 @@
     .bar-bg { margin-top: 14px; height: 8px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.22); position: relative; overflow: hidden; }
     .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ff0000 0%, #ff7a00 18%, #ffff00 40%, #60ff00 60%, #00d8ff 80%, #a000ff 100%); background-size: 260px 100%; transition: width .2s linear; }
     .total { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #000; }
+    .total-label { color: #d7dde5; }
     .value.good { color: #60ff00; } .value.bad { color: #ff4b4b; }
     .tank { margin-top: 7px; font-size: 13px; color: #cfd6df; }
     .hidden { display: none; }
 </style>
 </head>
 <body>
+
 <div id="widget" class="widget">
     <div class="top">
         <div id="percent" class="percent">--.--%</div>
@@ -35,86 +37,120 @@
 
 <script>
 const WS_URL = "ws://localhost:38200";
-const EMA_K = 0.0198; 
+const EMA_K = 2 / 101; 
 
 const el = id => document.getElementById(id);
 const widgetEl = el("widget"), percentEl = el("percent"), deltaEl = el("delta");
 const barEl = el("bar"), valueEl = el("value"), targetEl = el("target"), tankEl = el("tank");
 
-let damage = 0, spot = 0, track = 0, stun = 0;
+let damage = 0, spot = 0, track = 0, stun = 0, liveAssist = 0;
 let startRating = null, startAvg = null, moeDistribution = null;
-let currentVehicle = null;
+let currentTank = null;
 
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-function battleValue() { return damage + Math.max(spot, track, stun); }
+function fmt(n) { return Math.round(n || 0).toLocaleString("uk-UA"); }
+
+// Розрахунок поточної сумарки за твоїм старим методом
+function battleValue() {
+    return (Number(damage) || 0) + Math.max(Number(liveAssist), Number(spot), Number(track), Number(stun));
+}
+
+// Пошук даних у глибині об'єкта (твій старий метод)
+function deepFind(obj, keys) {
+    let found = [];
+    if (!obj || typeof obj !== "object") return found;
+    for (let k in obj) {
+        if (keys.includes(k)) found.push({key: k, value: obj[k]});
+        if (obj[k] && typeof obj[k] === "object") found = found.concat(deepFind(obj[k], keys));
+    }
+    return found;
+}
 
 function getDmgPerPercent() {
     if (moeDistribution && moeDistribution.length >= 2) {
-        const p1 = moeDistribution[0], p2 = moeDistribution[moeDistribution.length - 1];
-        const dDiff = Math.abs(p2.damage - p1.damage), pDiff = Math.abs(p2.percent - p1.percent);
+        const dDiff = Math.abs(moeDistribution[moeDistribution.length-1].damage - moeDistribution[0].damage);
+        const pDiff = Math.abs(moeDistribution[moeDistribution.length-1].percent - moeDistribution[0].percent);
         if (pDiff > 0) return dDiff / pDiff;
     }
-    // Коригування коефіцієнта для Bourrasque (щоб падіння було ~1.23% при 0 шкоди)
-    return startAvg * (startAvg > 3000 ? 0.048 : 0.016);
+    // Адаптивний коефіцієнт (для 2500 сумарки 1% ~ 45 од, для 3800 ~ 150 од)
+    return startAvg * (startAvg > 3000 ? 0.042 : 0.018);
 }
 
 function update() {
-    const total = battleValue();
-    const dmgPerPct = getDmgPerPercent();
-    
-    valueEl.textContent = Math.round(total);
-    targetEl.textContent = startAvg ? Math.round(startAvg) : "0";
-    valueEl.className = "value " + (startAvg && total >= startAvg ? "good" : "bad");
+    const currentTotal = battleValue();
+    valueEl.textContent = fmt(currentTotal);
+    targetEl.textContent = startAvg ? fmt(startAvg) : "0";
+    valueEl.className = "value " + (startAvg && currentTotal >= startAvg ? "good" : "bad");
 
     if (startRating !== null && startAvg !== null) {
-        const predicted = startAvg + (total - startAvg) * EMA_K;
+        const predicted = startAvg + (currentTotal - startAvg) * EMA_K;
+        const dmgPerPct = getDmgPerPercent();
         const diff = (predicted - startAvg) / dmgPerPct;
-        const currentRating = startRating + diff;
-        const safeP = Math.max(0, Math.min(100, currentRating));
+        const currentRating = clamp(startRating + diff, 0, 100);
 
-        percentEl.textContent = safeP.toFixed(2) + "%";
-        barEl.style.width = safeP + "%";
-        
+        percentEl.textContent = currentRating.toFixed(2) + "%";
+        barEl.style.width = currentRating + "%";
         deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-        deltaEl.className = "delta " + (diff > 0.001 ? "plus" : (diff < -0.001 ? "minus" : "neutral"));
+        deltaEl.className = "delta " + (diff > 0.005 ? "plus" : (diff < -0.005 ? "minus" : "neutral"));
     }
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function processData(value) {
+    const found = deepFind(value, ["damageRating", "movingAvgDamage", "damageBetterThanNPercent", "localizedShortName"]);
+    found.forEach(f => {
+        if (f.key === "damageRating") startRating = num(f.value);
+        if (f.key === "movingAvgDamage") startAvg = num(f.value);
+        if (f.key === "localizedShortName") {
+            if (currentTank !== f.value) {
+                currentTank = f.value;
+                tankEl.textContent = f.value;
+                // Скидаємо шкоду при зміні танка
+                damage = 0; spot = 0; track = 0; stun = 0; liveAssist = 0;
+            }
+        }
+        if (f.key === "damageBetterThanNPercent") {
+            const raw = f.value;
+            let pts = [];
+            if (typeof raw === 'object') {
+                for (let k in raw) pts.push({percent: num(k), damage: num(raw[k])});
+            }
+            if (pts.length >= 2) moeDistribution = pts.sort((a,b) => a.percent - b.percent);
+        }
+    });
+    update();
 }
 
 function connect() {
     const ws = new WebSocket(WS_URL);
     ws.onmessage = e => {
-        const p = JSON.parse(e.data);
+        let p = JSON.parse(e.data);
         if (p.type === "state") {
-            const v = p.value;
-            // ЯКЩО ЗМІНИВСЯ ТАНК - ПОВНЕ ОБНУЛЕННЯ
-            if (p.path === "battle.vehicle" && v?.localizedShortName !== currentVehicle) {
-                currentVehicle = v?.localizedShortName;
-                tankEl.textContent = currentVehicle;
-                damage = 0; spot = 0; track = 0; stun = 0;
-                startRating = null; startAvg = null; moeDistribution = null;
+            const path = p.path.toLowerCase();
+            if (path.includes("damage")) {
+                if (path.includes("efficiency")) damage = num(p.value) || 0;
+            } else if (path.includes("assist")) {
+                if (path.includes("radio")) spot = num(p.value) || 0;
+                else if (path.includes("track")) track = num(p.value) || 0;
+                else if (path.includes("stun")) stun = num(p.value) || 0;
+                else liveAssist = num(p.value) || 0;
+            } else if (path.includes("hangar")) {
+                if (p.value) { widgetEl.classList.add("hidden"); damage = 0; }
+            } else if (path.includes("battle.isinbattle")) {
+                widgetEl.classList.toggle("hidden", !p.value);
             }
-
-            switch(p.path) {
-                case "battle.isInBattle": widgetEl.classList.toggle("hidden", !v); break;
-                case "battle.efficiency.damage": damage = num(v) || 0; update(); break;
-                case "battle.efficiency.damageAssistedRadio": spot = num(v) || 0; update(); break;
-                case "battle.efficiency.damageAssistedTrack": track = num(v) || 0; update(); break;
-                case "battle.efficiency.damageAssistedStun": stun = num(v) || 0; update(); break;
-                case "dossier.current":
-                case "moeInfo.current":
-                    if (num(v?.damageRating)) startRating = num(v.damageRating);
-                    if (num(v?.movingAvgDamage)) startAvg = num(v.movingAvgDamage);
-                    if (v?.damageBetterThanNPercent) {
-                        const d = v.damageBetterThanNPercent;
-                        moeDistribution = Object.keys(d).map(k => ({percent: num(k), damage: num(d[k])})).sort((a,b) => a.percent - b.percent);
-                    }
-                    update(); break;
-            }
+            
+            // Викликаємо глибокий пошук для будь-яких вхідних даних
+            processData(p.value);
+            if (path.includes("dossier") || path.includes("moe")) processData(p.value);
         }
     };
     ws.onclose = () => setTimeout(connect, 1000);
 }
+
 connect();
+update();
 </script>
 </body>
 </html>
