@@ -10,32 +10,22 @@
     .top { display: flex; justify-content: center; align-items: center; gap: 10px; }
     .percent { font-size: 40px; line-height: 1; font-weight: 700; color: #fff; text-shadow: 0 2px 5px #000; -webkit-text-stroke: 1px rgba(0,0,0,.85); }
     .delta { font-size: 18px; line-height: 1; margin-top: 5px; font-weight: 700; text-shadow: 0 2px 4px #000; }
-    .plus { color: #60ff00; }
-    .minus { color: #ff4b4b; }
-    .neutral { color: #dfe6ef; }
+    .plus { color: #60ff00; } .minus { color: #ff4b4b; } .neutral { color: #dfe6ef; }
     .bar-bg { margin-top: 14px; height: 8px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.22); position: relative; overflow: hidden; }
     .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ff0000 0%, #ff7a00 18%, #ffff00 40%, #60ff00 60%, #00d8ff 80%, #a000ff 100%); background-size: 260px 100%; transition: width .2s linear; }
-    .marker { position: absolute; top: -2px; bottom: -2px; width: 2px; background: rgba(255,255,255,.9); z-index: 3; }
-    .m65 { left: 65%; } .m85 { left: 85%; } .m95 { left: 95%; }
     .total { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #000; }
-    .total-label { color: #d7dde5; }
-    .value.good { color: #60ff00; }
-    .value.bad { color: #ff4b4b; }
-    .tank { margin-top: 7px; font-size: 13px; color: #cfd6df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 3px #000; }
+    .value.good { color: #60ff00; } .value.bad { color: #ff4b4b; }
+    .tank { margin-top: 7px; font-size: 13px; color: #cfd6df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .hidden { display: none; }
 </style>
 </head>
 <body>
-
 <div id="widget" class="widget">
     <div class="top">
         <div id="percent" class="percent">--.--%</div>
         <div id="delta" class="delta neutral">0.00%</div>
     </div>
-    <div class="bar-bg">
-        <div class="marker m65"></div><div class="marker m85"></div><div class="marker m95"></div>
-        <div id="bar" class="bar"></div>
-    </div>
+    <div class="bar-bg"><div id="bar" class="bar"></div></div>
     <div class="total">
         <div class="total-label">Загалом</div>
         <div><span id="value" class="value bad">0</span> / <span id="target">0</span></div>
@@ -45,67 +35,52 @@
 
 <script>
 const WS_URL = "ws://localhost:38200";
-const EMA_K = 2 / 101; 
+const EMA_K = 0.0198; // Коефіцієнт для точного розрахунку EMA
 
 const el = id => document.getElementById(id);
 const widgetEl = el("widget"), percentEl = el("percent"), deltaEl = el("delta");
 const barEl = el("bar"), valueEl = el("value"), targetEl = el("target"), tankEl = el("tank");
 
-let damage = 0, liveAssist = 0, spotAssist = 0, trackAssist = 0, stunAssist = 0;
+let damage = 0, spot = 0, track = 0, stun = 0;
 let startRating = null, startAvg = null, moeDistribution = null;
-let tankShortName = null;
+let tankName = "";
 
-function fmt(n) { return Number(Math.round(n || 0)).toLocaleString("uk-UA"); }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-
-function bestAssist() { return Math.max(liveAssist, spotAssist, trackAssist, stunAssist); }
+function bestAssist() { return Math.max(spot, track, stun); }
 function battleValue() { return damage + bestAssist(); }
 
-function predictedAvg() {
-    if (startAvg === null) return null;
-    // EMA прогноз: падіння на початку бою
-    return startAvg + (battleValue() - startAvg) * EMA_K;
-}
-
-// ДИНАМІЧНИЙ розрахунок ціни відсотка
 function getDmgPerPercent() {
     if (moeDistribution && moeDistribution.length >= 2) {
-        const p1 = moeDistribution[0];
-        const p2 = moeDistribution[moeDistribution.length - 1];
-        const dDiff = Math.abs(p2.damage - p1.damage);
-        const pDiff = Math.abs(p2.percent - p1.percent);
+        const p1 = moeDistribution[0], p2 = moeDistribution[moeDistribution.length - 1];
+        const dDiff = Math.abs(p2.damage - p1.damage), pDiff = Math.abs(p2.percent - p1.percent);
         if (pDiff > 0) return dDiff / pDiff;
     }
-    
-    // Адаптивний Fallback, щоб не було всюди -0.40%
-    if (startAvg < 1500) return startAvg * 0.025; 
-    if (startAvg < 2800) return startAvg * 0.022; // Для сумарки ~2600 дасть падіння ~0.90%
-    return startAvg * 0.055; // Для сумарки 3700+ дасть падіння ~0.40%
+    // Розрахунок чутливості (ціни 1%) залежно від рівня сумарки танка
+    return startAvg * (startAvg > 3000 ? 0.045 : 0.019);
 }
 
 function update() {
-    const v = battleValue();
-    const curAvg = predictedAvg();
+    const total = battleValue();
+    const dmgPerPct = getDmgPerPercent();
     
-    valueEl.textContent = fmt(v);
-    targetEl.textContent = startAvg !== null ? fmt(startAvg) : "0";
-    valueEl.className = "value " + (startAvg !== null && v >= startAvg ? "good" : "bad");
+    valueEl.textContent = Math.round(total);
+    // Ціль оновлюється автоматично при зміні даних від сервера
+    targetEl.textContent = startAvg ? Math.round(startAvg) : "0";
+    valueEl.className = "value " + (startAvg && total >= startAvg ? "good" : "bad");
 
-    if (startRating !== null && curAvg !== null) {
-        const dmgPerPct = getDmgPerPercent();
-        // Розрахунок рейтингу на основі дельти прогнозу
-        const currentRating = startRating + (curAvg - startAvg) / dmgPerPct;
+    if (startRating !== null && startAvg !== null) {
+        const predicted = startAvg + (total - startAvg) * EMA_K;
+        const diff = (predicted - startAvg) / dmgPerPct;
+        const currentRating = startRating + diff;
         const safeP = Math.max(0, Math.min(100, currentRating));
 
         percentEl.textContent = safeP.toFixed(2) + "%";
         barEl.style.width = safeP + "%";
-
-        const diff = currentRating - startRating;
+        
         deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
         deltaEl.className = "delta " + (diff > 0.001 ? "plus" : (diff < -0.001 ? "minus" : "neutral"));
     }
-    
-    if (tankShortName) tankEl.textContent = tankShortName;
+    tankEl.textContent = tankName;
 }
 
 function connect() {
@@ -116,23 +91,28 @@ function connect() {
             const v = p.value;
             switch(p.path) {
                 case "battle.isInBattle": 
-                    if (v) { widgetEl.classList.remove("hidden"); } 
-                    else { widgetEl.classList.add("hidden"); damage=0; liveAssist=0; spotAssist=0; trackAssist=0; stunAssist=0; }
+                    widgetEl.classList.toggle("hidden", !v); 
+                    if(!v) { damage=0; spot=0; track=0; stun=0; } 
                     break;
-                case "battle.vehicle": tankShortName = v?.localizedShortName; update(); break;
+                case "battle.vehicle": 
+                    tankName = v?.localizedShortName || ""; 
+                    update(); 
+                    break;
                 case "battle.efficiency.damage": damage = num(v) || 0; update(); break;
-                case "battle.efficiency.damageAssistedRadio": spotAssist = num(v) || 0; update(); break;
-                case "battle.efficiency.damageAssistedTrack": trackAssist = num(v) || 0; update(); break;
-                case "battle.efficiency.damageAssistedStun": stunAssist = num(v) || 0; update(); break;
+                case "battle.efficiency.damageAssistedRadio": spot = num(v) || 0; update(); break;
+                case "battle.efficiency.damageAssistedTrack": track = num(v) || 0; update(); break;
+                case "battle.efficiency.damageAssistedStun": stun = num(v) || 0; update(); break;
                 case "dossier.current":
                 case "moeInfo.current":
+                    // Постійно оновлюємо цільову сумарку та рейтинг з сервера
                     if (num(v?.damageRating)) startRating = num(v.damageRating);
                     if (num(v?.movingAvgDamage)) startAvg = num(v.movingAvgDamage);
                     if (v?.damageBetterThanNPercent) {
-                        const dist = v.damageBetterThanNPercent;
-                        moeDistribution = Object.keys(dist).map(k => ({percent: num(k), damage: num(dist[k])})).sort((a,b) => a.percent - b.percent);
+                        const d = v.damageBetterThanNPercent;
+                        moeDistribution = Object.keys(d).map(k => ({percent: num(k), damage: num(d[k])})).sort((a,b) => a.percent - b.percent);
                     }
-                    update(); break;
+                    update(); 
+                    break;
             }
         }
     };
