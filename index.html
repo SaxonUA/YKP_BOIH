@@ -70,14 +70,12 @@ body{
   background:linear-gradient(
     90deg,
     #ff0000 0%,
-    #ff7a00 18%,
-    #ffff00 40%,
-    #60ff00 60%,
-    #00d8ff 80%,
+    #ff7a00 25%,
+    #ffff00 45%,
+    #60ff00 65%,
+    #00d8ff 85%,
     #a000ff 100%
   );
-  background-size:260px 100%;
-  background-repeat:no-repeat;
   transition:width .2s linear;
 }
 
@@ -130,9 +128,10 @@ body{
 <body>
 
 <div id="widget" class="widget">
+
   <div class="top">
     <div id="percent" class="percent">--.--%</div>
-    <div id="delta" class="delta neutral">0.00%</div>
+    <div id="delta" class="delta neutral">AUTO</div>
   </div>
 
   <div class="bar-bg">
@@ -145,16 +144,24 @@ body{
   <div class="total">
     <div class="total-label">Загалом</div>
     <div>
-      <span id="value" class="value bad">0</span> / <span id="target">0</span>
+      <span id="value" class="value bad">0</span> / <span id="target">auto</span>
     </div>
   </div>
 
   <div id="tank" class="tank"></div>
+
 </div>
 
 <script>
 const WS_URL = "ws://localhost:38200";
+
 const EMA_K = 2 / 101;
+const LIVE_START_DROP = 0.78;
+const LIVE_GAIN_AT_TARGET = 1.55;
+
+const LOCAL_TARGETS = {
+  // "germany:G177_E65_Zwilling": { "65": 1900, "85": 3000, "95": 4200 }
+};
 
 const el = id => document.getElementById(id);
 
@@ -179,16 +186,20 @@ let stunAssist = 0;
 
 let startRating = null;
 let startAvg = null;
+let marksOnGun = null;
+let battlesCount = null;
 
 let vehicleTag = null;
 let tankShortName = null;
 let tankName = null;
 
 let moeDistribution = null;
+let autoTarget = null;
+
 let lastBattleResultApplied = false;
 
 function fmt(n){
-  return Number(Math.round(n || 0)).toLocaleString("uk-UA");
+  return Number(n || 0).toLocaleString("uk-UA");
 }
 
 function num(v){
@@ -211,10 +222,15 @@ function cleanTankName(){
 
   if (vehicleTag){
     let n = vehicleTag;
-    if (n.includes(":")) n = n.split(":")[1];
+
+    if (n.includes(":")){
+      n = n.split(":")[1];
+    }
+
     n = n.replace(/^[A-Z]\d+_/,"");
     n = n.replace(/_/g," ");
     n = n.replace(/([A-Z])(\d+)/g,"$1 $2");
+
     return n;
   }
 
@@ -235,8 +251,8 @@ function battleValue(){
 }
 
 function predictedAvg(){
-  if (startAvg === null || startAvg <= 0) return null;
-  return startAvg + (battleValue() - startAvg) * EMA_K;
+  if (startAvg === null) return null;
+  return startAvg + EMA_K * (battleValue() - startAvg);
 }
 
 function storageKey(){
@@ -253,6 +269,8 @@ function saveVehicleData(){
     tankName,
     startRating,
     startAvg,
+    marksOnGun,
+    battlesCount,
     moeDistribution,
     savedAt: Date.now()
   };
@@ -269,19 +287,23 @@ function loadVehicleData(){
   try{
     const data = JSON.parse(raw);
 
-    if (Date.now() - Number(data.savedAt || 0) > 1000 * 60 * 60 * 24 * 7){
-      return false;
-    }
-
-    if (startRating === null && data.startRating !== null && data.startRating !== undefined){
+    if (data.startRating !== null && data.startRating !== undefined){
       startRating = Number(data.startRating);
     }
 
-    if (startAvg === null && data.startAvg !== null && data.startAvg !== undefined){
+    if (data.startAvg !== null && data.startAvg !== undefined){
       startAvg = Number(data.startAvg);
     }
 
-    if (!moeDistribution && Array.isArray(data.moeDistribution)){
+    if (data.marksOnGun !== null && data.marksOnGun !== undefined){
+      marksOnGun = Number(data.marksOnGun);
+    }
+
+    if (data.battlesCount !== null && data.battlesCount !== undefined){
+      battlesCount = Number(data.battlesCount);
+    }
+
+    if (Array.isArray(data.moeDistribution)){
       moeDistribution = data.moeDistribution;
     }
 
@@ -301,7 +323,11 @@ function deepFind(obj, keys, path = ""){
     const full = path ? path + "." + k : k;
 
     if (keys.includes(k)){
-      found.push({path:full,key:k,value:obj[k]});
+      found.push({
+        path: full,
+        key: k,
+        value: obj[k]
+      });
     }
 
     if (obj[k] && typeof obj[k] === "object"){
@@ -332,15 +358,14 @@ function normalizeMoeDistribution(raw){
           num(item.rating) ??
           num(item.mark) ??
           num(item.key) ??
-          num(item.percentile);
+          num(item[0]);
 
         const d =
           num(item.damage) ??
           num(item.value) ??
           num(item.avgDamage) ??
           num(item.movingAvgDamage) ??
-          num(item.targetDamage) ??
-          num(item.requiredDamage);
+          num(item[1]);
 
         if (p !== null && d !== null){
           points.push({percent:p, damage:d});
@@ -358,11 +383,19 @@ function normalizeMoeDistribution(raw){
     }
   }
 
-  const clean = points
-    .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 0)
-    .sort((a,b) => a.percent - b.percent);
+  points.sort((a,b) => a.percent - b.percent);
 
-  return clean.length >= 2 ? clean : null;
+  return points.length ? points : null;
+}
+
+function applyLocalTargets(){
+  if (!vehicleTag) return;
+  if (moeDistribution) return;
+
+  const local = LOCAL_TARGETS[vehicleTag];
+  if (!local) return;
+
+  moeDistribution = normalizeMoeDistribution(local);
 }
 
 function interpolateRatingFromAvg(avg){
@@ -373,10 +406,7 @@ function interpolateRatingFromAvg(avg){
   const points = moeDistribution;
 
   if (avg <= points[0].damage){
-    const a = points[0];
-    const b = points[1];
-    const slope = (b.percent - a.percent) / Math.max(1, b.damage - a.damage);
-    return clamp(a.percent - (a.damage - avg) * slope, 0, 100);
+    return points[0].percent;
   }
 
   for (let i = 0; i < points.length - 1; i++){
@@ -389,54 +419,77 @@ function interpolateRatingFromAvg(avg){
     }
   }
 
-  const last = points[points.length - 1];
-  const prev = points[points.length - 2];
-
-  const slope = (last.percent - prev.percent) / Math.max(1, last.damage - prev.damage);
-  return clamp(last.percent + (avg - last.damage) * slope, 0, 100);
+  return points[points.length - 1].percent;
 }
 
-function fallbackPercentFromAvg(avg){
-  if (startRating === null || startAvg === null || startAvg <= 0 || avg === null) return null;
+function getNextTarget(){
+  applyLocalTargets();
 
-  const estimatedDamagePerOnePercent = Math.max(120, startAvg * 0.04);
-  return startRating + (avg - startAvg) / estimatedDamagePerOnePercent;
+  if (!moeDistribution || !moeDistribution.length){
+    return null;
+  }
+
+  const current =
+    startRating ??
+    interpolateRatingFromAvg(startAvg) ??
+    0;
+
+  for (const p of moeDistribution){
+    if (p.percent > current){
+      return Math.round(p.damage);
+    }
+  }
+
+  return Math.round(moeDistribution[moeDistribution.length - 1].damage);
 }
 
 function percentCalc(){
-  const avg = predictedAvg();
-  if (avg === null || startRating === null) return null;
+  if (startRating === null) return null;
 
-  const exact = interpolateRatingFromAvg(avg);
-  if (exact !== null) return exact;
+  // ФІКС: на початку бою (дамаг = 0) одразу повертаємо startRating,
+  // щоб уникнути зміщення через EMA при battleValue() = 0
+  if (battleValue() === 0) return startRating;
 
-  return fallbackPercentFromAvg(avg);
+  const avgNew = predictedAvg();
+
+  const exact = interpolateRatingFromAvg(avgNew);
+  if (exact !== null){
+    return exact;
+  }
+
+  const base = startRating - LIVE_START_DROP;
+  const avg = startAvg || 1;
+  const ratio = battleValue() / avg;
+
+  return base + ratio * LIVE_GAIN_AT_TARGET;
 }
 
 function update(){
   const v = battleValue();
-  const avg = predictedAvg();
+
+  autoTarget = getNextTarget();
 
   valueEl.textContent = fmt(v);
-  targetEl.textContent = avg !== null ? fmt(avg) : "0";
+  targetEl.textContent = autoTarget !== null ? fmt(autoTarget) : "auto";
 
-  valueEl.className = "value " + (avg !== null && v >= avg ? "good" : "bad");
+  valueEl.className =
+    "value " + (autoTarget !== null && v >= autoTarget ? "good" : "bad");
 
   const p = percentCalc();
 
   if (p !== null){
     const safeP = clamp(p,0,100);
 
-    percentEl.textContent = safeP.toFixed(2) + "%";
+    percentEl.textContent = p.toFixed(2) + "%";
     barEl.style.width = safeP + "%";
 
-    const diff = safeP - startRating;
+    const diff = p - startRating;
 
     deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
 
-    if (diff > 0.005){
+    if (diff > 0){
       deltaEl.className = "delta plus";
-    } else if (diff < -0.005){
+    } else if (diff < 0){
       deltaEl.className = "delta minus";
     } else {
       deltaEl.className = "delta neutral";
@@ -444,7 +497,7 @@ function update(){
   } else {
     percentEl.textContent = "--.--%";
     barEl.style.width = "0%";
-    deltaEl.textContent = "0.00%";
+    deltaEl.textContent = "AUTO";
     deltaEl.className = "delta neutral";
   }
 
@@ -467,43 +520,35 @@ function applyDossier(value){
   const found = deepFind(value, [
     "damageRating",
     "movingAvgDamage",
-    "damageBetterThanNPercent",
-    "vehicleTag",
-    "localizedShortName",
-    "localizedName",
-    "tag"
+    "battlesCount",
+    "battleCount",
+    "marksOnGun",
+    "vehicleTag"
   ]);
 
   for (const f of found){
-    if ((f.key === "vehicleTag" || f.key === "tag") && f.value){
+    if (f.key === "vehicleTag" && f.value){
       vehicleTag = String(f.value);
-    }
-
-    if (f.key === "localizedShortName" && f.value){
-      tankShortName = String(f.value);
-    }
-
-    if (f.key === "localizedName" && f.value){
-      tankName = String(f.value);
     }
 
     if (f.key === "damageRating"){
       const v = num(f.value);
-      if (v !== null && v > 0 && v <= 100 && battleValue() === 0){
-        startRating = v;
-      }
+      if (v !== null) startRating = v;
     }
 
     if (f.key === "movingAvgDamage"){
       const v = num(f.value);
-      if (v !== null && v > 0 && battleValue() === 0){
-        startAvg = v;
-      }
+      if (v !== null) startAvg = v;
     }
 
-    if (f.key === "damageBetterThanNPercent"){
-      const dist = normalizeMoeDistribution(f.value);
-      if (dist) moeDistribution = dist;
+    if (f.key === "battlesCount" || f.key === "battleCount"){
+      const v = num(f.value);
+      if (v !== null) battlesCount = v;
+    }
+
+    if (f.key === "marksOnGun"){
+      const v = num(f.value);
+      if (v !== null) marksOnGun = v;
     }
   }
 
@@ -516,25 +561,16 @@ function applyMoeInfo(value){
 
   const found = deepFind(value, [
     "damageBetterThanNPercent",
+    "vehicleTag",
     "damageRating",
     "movingAvgDamage",
-    "vehicleTag",
-    "localizedShortName",
-    "localizedName",
-    "tag"
+    "battleCount",
+    "battlesCount"
   ]);
 
   for (const f of found){
-    if ((f.key === "vehicleTag" || f.key === "tag") && f.value){
+    if (f.key === "vehicleTag" && f.value){
       vehicleTag = String(f.value);
-    }
-
-    if (f.key === "localizedShortName" && f.value){
-      tankShortName = String(f.value);
-    }
-
-    if (f.key === "localizedName" && f.value){
-      tankName = String(f.value);
     }
 
     if (f.key === "damageBetterThanNPercent"){
@@ -544,16 +580,17 @@ function applyMoeInfo(value){
 
     if (f.key === "damageRating"){
       const v = num(f.value);
-      if (v !== null && v > 0 && v <= 100 && battleValue() === 0){
-        startRating = v;
-      }
+      if (v !== null) startRating = v;
     }
 
     if (f.key === "movingAvgDamage"){
       const v = num(f.value);
-      if (v !== null && v > 0 && battleValue() === 0){
-        startAvg = v;
-      }
+      if (v !== null) startAvg = v;
+    }
+
+    if (f.key === "battleCount" || f.key === "battlesCount"){
+      const v = num(f.value);
+      if (v !== null) battlesCount = v;
     }
   }
 
@@ -568,6 +605,7 @@ function extractPlayerIdFromBattleResult(result){
     if (key === "avatar") continue;
 
     const r = personal[key];
+
     if (!r || typeof r !== "object") continue;
 
     if (typeof r.accountDBID !== "undefined"){
@@ -593,6 +631,7 @@ function applyBattleResult(result){
     if (key === "avatar") continue;
 
     const r = personal[key];
+
     if (!r || typeof r !== "object") continue;
 
     if (playerId && Number(r.accountDBID) !== Number(playerId)) continue;
@@ -604,8 +643,31 @@ function applyBattleResult(result){
     stunAssist = Number(r.damageAssistedStun) || 0;
     liveAssist = Math.max(spotAssist, trackAssist, stunAssist);
 
+    if (typeof r.damageRating !== "undefined"){
+      startRating = Number(r.damageRating);
+    }
+
+    if (typeof r.movingAvgDamage !== "undefined"){
+      startAvg = Number(r.movingAvgDamage);
+    }
+
+    if (typeof r.marksOnGun !== "undefined"){
+      marksOnGun = Number(r.marksOnGun);
+    }
+
+    if (typeof r.battleNum !== "undefined"){
+      battlesCount = Number(r.battleNum);
+    }
+
+    if (typeof r.typeCompDescr !== "undefined" && !vehicleTag){
+      vehicleTag = "typeCompDescr:" + r.typeCompDescr;
+    }
+
     lastBattleResultApplied = true;
+
+    saveVehicleData();
     update();
+
     return;
   }
 }
@@ -613,14 +675,18 @@ function applyBattleResult(result){
 function connect(){
   ws = new WebSocket(WS_URL);
 
-  ws.onopen = () => clearTimeout(reconnectTimer);
+  ws.onopen = () => {
+    clearTimeout(reconnectTimer);
+  };
 
   ws.onclose = () => {
     reconnectTimer = setTimeout(connect,1000);
   };
 
   ws.onerror = () => {
-    try{ ws.close(); }catch(e){}
+    try{
+      ws.close();
+    }catch(e){}
   };
 
   ws.onmessage = e => {
@@ -647,10 +713,19 @@ function connect(){
           break;
 
         case "battle.vehicle":
-          if (p.value?.localizedShortName) tankShortName = p.value.localizedShortName;
-          if (p.value?.localizedName) tankName = p.value.localizedName;
-          if (p.value?.tag) vehicleTag = p.value.tag;
+          if (p.value?.localizedShortName){
+            tankShortName = p.value.localizedShortName;
+          }
 
+          if (p.value?.localizedName){
+            tankName = p.value.localizedName;
+          }
+
+          if (p.value?.tag){
+            vehicleTag = p.value.tag;
+          }
+
+          applyLocalTargets();
           loadVehicleData();
           update();
           break;
@@ -691,8 +766,13 @@ function connect(){
         default:
           const path = String(p.path).toLowerCase();
 
-          if (path.includes("dossier")) applyDossier(p.value);
-          if (path.includes("moe")) applyMoeInfo(p.value);
+          if (path.includes("dossier")){
+            applyDossier(p.value);
+          }
+
+          if (path.includes("moe")){
+            applyMoeInfo(p.value);
+          }
 
           if (path.includes("assist")){
             const v = Number(p.value) || 0;
