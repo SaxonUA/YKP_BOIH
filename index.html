@@ -2,7 +2,6 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 
 <style>
@@ -13,10 +12,7 @@ html,body{
   font-family:"Roboto Condensed",Arial,sans-serif;
   overflow:hidden;
 }
-
-body{
-  padding:12px;
-}
+body{padding:12px;}
 
 .widget{
   width:260px;
@@ -104,10 +100,7 @@ body{
   text-shadow:0 2px 4px #000;
 }
 
-.total-label{
-  color:#d7dde5;
-}
-
+.total-label{color:#d7dde5;}
 .value.good{color:#60ff00;}
 .value.bad{color:#ff4b4b;}
 
@@ -121,9 +114,7 @@ body{
   text-shadow:0 2px 3px #000;
 }
 
-.hidden{
-  display:none;
-}
+.hidden{display:none;}
 </style>
 </head>
 
@@ -154,7 +145,12 @@ body{
 
 <script>
 const WS_URL = "ws://localhost:38200";
-const EMA_K = 2 / 101;
+
+/*
+  Було: 2 / 101
+  Для твого віджета це давало занадто малий приріст.
+*/
+const EMA_K = 0.022;
 
 const el = id => document.getElementById(id);
 
@@ -236,12 +232,15 @@ function battleValue(){
 
 function predictedAvg(){
   if (startAvg === null || startAvg <= 0) return null;
-  return startAvg + (battleValue() - startAvg) * EMA_K;
+
+  const battle = battleValue();
+
+  return startAvg + (battle - startAvg) * EMA_K;
 }
 
 function storageKey(){
   const key = vehicleTag || tankShortName || tankName || "unknown";
-  return "wotstat_moe_widget_" + key;
+  return "wotstat_moe_widget_v2_" + key;
 }
 
 function saveVehicleData(){
@@ -315,16 +314,20 @@ function deepFind(obj, keys, path = ""){
 function normalizeMoeDistribution(raw){
   if (!raw) return null;
 
-  const points = [];
+  let points = [];
 
   if (Array.isArray(raw)){
     for (const item of raw){
       if (Array.isArray(item) && item.length >= 2){
-        const p = num(item[0]);
-        const d = num(item[1]);
+        let a = num(item[0]);
+        let b = num(item[1]);
 
-        if (p !== null && d !== null){
-          points.push({percent:p, damage:d});
+        if (a !== null && b !== null){
+          if (a <= 100 && b > 100){
+            points.push({percent:a, damage:b});
+          } else if (b <= 100 && a > 100){
+            points.push({percent:b, damage:a});
+          }
         }
       } else if (item && typeof item === "object"){
         const p =
@@ -343,23 +346,55 @@ function normalizeMoeDistribution(raw){
           num(item.requiredDamage);
 
         if (p !== null && d !== null){
-          points.push({percent:p, damage:d});
+          if (p <= 100 && d > 0){
+            points.push({percent:p, damage:d});
+          }
         }
       }
     }
-  } else if (typeof raw === "object"){
-    for (const k of Object.keys(raw)){
-      const p = num(k);
-      const d = num(raw[k]);
+  }
 
-      if (p !== null && d !== null){
-        points.push({percent:p, damage:d});
+  if (typeof raw === "object" && !Array.isArray(raw)){
+    const temp = [];
+
+    for (const k of Object.keys(raw)){
+      const a = num(k);
+      const b = num(raw[k]);
+
+      if (a !== null && b !== null){
+        temp.push([a,b]);
+      }
+    }
+
+    let percentToDamage = 0;
+    let damageToPercent = 0;
+
+    for (const [a,b] of temp){
+      if (a >= 0 && a <= 100 && b > 100) percentToDamage++;
+      if (a > 100 && b >= 0 && b <= 100) damageToPercent++;
+    }
+
+    for (const [a,b] of temp){
+      if (percentToDamage >= damageToPercent){
+        if (a >= 0 && a <= 100 && b > 0){
+          points.push({percent:a, damage:b});
+        }
+      } else {
+        if (b >= 0 && b <= 100 && a > 0){
+          points.push({percent:b, damage:a});
+        }
       }
     }
   }
 
   const clean = points
-    .filter(p => p.percent >= 0 && p.percent <= 100 && p.damage > 0)
+    .filter(p =>
+      Number.isFinite(p.percent) &&
+      Number.isFinite(p.damage) &&
+      p.percent >= 0 &&
+      p.percent <= 100 &&
+      p.damage > 0
+    )
     .sort((a,b) => a.percent - b.percent);
 
   return clean.length >= 2 ? clean : null;
@@ -399,7 +434,8 @@ function interpolateRatingFromAvg(avg){
 function fallbackPercentFromAvg(avg){
   if (startRating === null || startAvg === null || startAvg <= 0 || avg === null) return null;
 
-  const estimatedDamagePerOnePercent = Math.max(120, startAvg * 0.04);
+  const estimatedDamagePerOnePercent = Math.max(45, startAvg * 0.018);
+
   return startRating + (avg - startAvg) / estimatedDamagePerOnePercent;
 }
 
