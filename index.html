@@ -15,7 +15,7 @@
     .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ff0000 0%, #ff7a00 18%, #ffff00 40%, #60ff00 60%, #00d8ff 80%, #a000ff 100%); background-size: 260px 100%; transition: width .2s linear; }
     .total { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #000; }
     .value.good { color: #60ff00; } .value.bad { color: #ff4b4b; }
-    .tank { margin-top: 7px; font-size: 13px; color: #cfd6df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tank { margin-top: 7px; font-size: 13px; color: #cfd6df; }
     .hidden { display: none; }
 </style>
 </head>
@@ -35,7 +35,7 @@
 
 <script>
 const WS_URL = "ws://localhost:38200";
-const EMA_K = 0.0198; // Коефіцієнт для точного розрахунку EMA
+const EMA_K = 0.0198; 
 
 const el = id => document.getElementById(id);
 const widgetEl = el("widget"), percentEl = el("percent"), deltaEl = el("delta");
@@ -43,11 +43,10 @@ const barEl = el("bar"), valueEl = el("value"), targetEl = el("target"), tankEl 
 
 let damage = 0, spot = 0, track = 0, stun = 0;
 let startRating = null, startAvg = null, moeDistribution = null;
-let tankName = "";
+let currentVehicle = null;
 
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-function bestAssist() { return Math.max(spot, track, stun); }
-function battleValue() { return damage + bestAssist(); }
+function battleValue() { return damage + Math.max(spot, track, stun); }
 
 function getDmgPerPercent() {
     if (moeDistribution && moeDistribution.length >= 2) {
@@ -55,8 +54,8 @@ function getDmgPerPercent() {
         const dDiff = Math.abs(p2.damage - p1.damage), pDiff = Math.abs(p2.percent - p1.percent);
         if (pDiff > 0) return dDiff / pDiff;
     }
-    // Розрахунок чутливості (ціни 1%) залежно від рівня сумарки танка
-    return startAvg * (startAvg > 3000 ? 0.045 : 0.019);
+    // Коригування коефіцієнта для Bourrasque (щоб падіння було ~1.23% при 0 шкоди)
+    return startAvg * (startAvg > 3000 ? 0.048 : 0.016);
 }
 
 function update() {
@@ -64,7 +63,6 @@ function update() {
     const dmgPerPct = getDmgPerPercent();
     
     valueEl.textContent = Math.round(total);
-    // Ціль оновлюється автоматично при зміні даних від сервера
     targetEl.textContent = startAvg ? Math.round(startAvg) : "0";
     valueEl.className = "value " + (startAvg && total >= startAvg ? "good" : "bad");
 
@@ -80,7 +78,6 @@ function update() {
         deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
         deltaEl.className = "delta " + (diff > 0.001 ? "plus" : (diff < -0.001 ? "minus" : "neutral"));
     }
-    tankEl.textContent = tankName;
 }
 
 function connect() {
@@ -89,37 +86,35 @@ function connect() {
         const p = JSON.parse(e.data);
         if (p.type === "state") {
             const v = p.value;
+            // ЯКЩО ЗМІНИВСЯ ТАНК - ПОВНЕ ОБНУЛЕННЯ
+            if (p.path === "battle.vehicle" && v?.localizedShortName !== currentVehicle) {
+                currentVehicle = v?.localizedShortName;
+                tankEl.textContent = currentVehicle;
+                damage = 0; spot = 0; track = 0; stun = 0;
+                startRating = null; startAvg = null; moeDistribution = null;
+            }
+
             switch(p.path) {
-                case "battle.isInBattle": 
-                    widgetEl.classList.toggle("hidden", !v); 
-                    if(!v) { damage=0; spot=0; track=0; stun=0; } 
-                    break;
-                case "battle.vehicle": 
-                    tankName = v?.localizedShortName || ""; 
-                    update(); 
-                    break;
+                case "battle.isInBattle": widgetEl.classList.toggle("hidden", !v); break;
                 case "battle.efficiency.damage": damage = num(v) || 0; update(); break;
                 case "battle.efficiency.damageAssistedRadio": spot = num(v) || 0; update(); break;
                 case "battle.efficiency.damageAssistedTrack": track = num(v) || 0; update(); break;
                 case "battle.efficiency.damageAssistedStun": stun = num(v) || 0; update(); break;
                 case "dossier.current":
                 case "moeInfo.current":
-                    // Постійно оновлюємо цільову сумарку та рейтинг з сервера
                     if (num(v?.damageRating)) startRating = num(v.damageRating);
                     if (num(v?.movingAvgDamage)) startAvg = num(v.movingAvgDamage);
                     if (v?.damageBetterThanNPercent) {
                         const d = v.damageBetterThanNPercent;
                         moeDistribution = Object.keys(d).map(k => ({percent: num(k), damage: num(d[k])})).sort((a,b) => a.percent - b.percent);
                     }
-                    update(); 
-                    break;
+                    update(); break;
             }
         }
     };
     ws.onclose = () => setTimeout(connect, 1000);
 }
 connect();
-update();
 </script>
 </body>
 </html>
