@@ -1,488 +1,494 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-  <meta charset="UTF-8" />
-  <title>WoT Mark Widget</title>
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8">
+<title>MOE Widget</title>
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: transparent;
-      overflow: hidden;
-      font-family: Arial, Helvetica, sans-serif;
-      color: #fff;
-    }
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+}
 
-    .widget {
-      width: 300px;
-      padding: 12px 14px 13px;
-      background: rgba(12, 12, 16, 0.78);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.45);
-      backdrop-filter: blur(8px);
-    }
+.widget {
+  width: 390px;
+  padding: 18px 22px 16px;
+  border-radius: 10px;
+  background: rgba(10, 15, 20, 0.72);
+  box-shadow: 0 0 22px rgba(0,0,0,.45);
+  color: #fff;
+  text-shadow: 0 2px 4px #000;
+}
 
-    .top {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 7px;
-    }
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 14px;
+}
 
-    .tank {
-      font-size: 16px;
-      font-weight: 800;
-      line-height: 1;
-      max-width: 160px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      text-shadow: 0 2px 4px rgba(0,0,0,.7);
-    }
+.mark {
+  font-size: 46px;
+  font-weight: 800;
+}
 
-    .markBox {
-      display: flex;
-      align-items: baseline;
-      gap: 7px;
-      white-space: nowrap;
-    }
+.delta {
+  font-size: 18px;
+  font-weight: 700;
+}
 
-    .mark {
-      font-size: 22px;
-      font-weight: 900;
-      color: #ffffff;
-      line-height: 1;
-      text-shadow: 0 2px 5px rgba(0,0,0,.75);
-    }
+.delta.plus { color: #62ff45; }
+.delta.minus { color: #ff4b3e; }
+.delta.zero { color: #ddd; }
 
-    .delta {
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 1;
-    }
+.bar-wrap {
+  position: relative;
+  height: 13px;
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.10);
+}
 
-    .delta.plus {
-      color: #50ff8a;
-    }
+.bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(
+    90deg,
+    #ff0000 0%,
+    #ff0000 15%,
+    #ff8c00 35%,
+    #ffff00 55%,
+    #45ff35 70%,
+    #00eaff 85%,
+    #a000ff 100%
+  );
+  transition: width .25s ease;
+}
 
-    .delta.minus {
-      color: #ff6464;
-    }
+.mark-line {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 21px;
+  background: rgba(255,255,255,.9);
+}
 
-    .barWrap {
-      position: relative;
-      width: 100%;
-      height: 13px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.12);
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.16);
-    }
+.line65 { left: 65%; }
+.line85 { left: 85%; }
+.line95 { left: 95%; }
 
-    .bar {
-      height: 100%;
-      width: 0%;
-      border-radius: 999px;
-      background: linear-gradient(
-        90deg,
-        #ff2020 0%,
-        #ff2020 15%,
-        #ff8a00 35%,
-        #ffe600 55%,
-        #42ff58 70%,
-        #20eaff 85%,
-        #b44cff 100%
-      );
-      transition: width .25s ease;
-    }
+.labels {
+  position: relative;
+  height: 16px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,.9);
+}
 
-    .marks {
-      position: relative;
-      width: 100%;
-      height: 14px;
-      margin-top: 3px;
-      font-size: 9px;
-      font-weight: 800;
-      color: rgba(255,255,255,.7);
-    }
+.labels span {
+  position: absolute;
+  transform: translateX(-50%);
+}
 
-    .m {
-      position: absolute;
-      transform: translateX(-50%);
-      top: 0;
-    }
+.labels .l65 { left: 65%; }
+.labels .l85 { left: 85%; }
+.labels .l95 { left: 95%; }
 
-    .m65 { left: 65%; }
-    .m85 { left: 85%; }
-    .m95 { left: 95%; }
-    .m100 { left: 100%; transform: translateX(-100%); }
+.row {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  font-size: 20px;
+  font-weight: 800;
+}
 
-    .bottom {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 4px;
-      font-size: 13px;
-      font-weight: 800;
-      color: rgba(255,255,255,.92);
-      text-shadow: 0 2px 4px rgba(0,0,0,.65);
-    }
+.total-value.good { color: #61ff45; }
+.total-value.bad { color: #ff3b32; }
 
-    .need {
-      color: rgba(255,255,255,.82);
-    }
+.tank {
+  margin-top: 8px;
+  font-size: 14px;
+  color: rgba(255,255,255,.85);
+}
 
-    .muted {
-      color: rgba(255,255,255,.45);
-    }
-  </style>
+.hidden {
+  display: none;
+}
+</style>
 </head>
 
 <body>
-  <div class="widget">
-    <div class="top">
-      <div class="tank" id="tankName">---</div>
+<div class="widget">
+  <div class="top">
+    <div class="mark" id="mark">--.--%</div>
+    <div class="delta zero" id="delta">+0.00%</div>
+  </div>
 
-      <div class="markBox">
-        <div class="mark" id="markPercent">--.--%</div>
-        <div class="delta" id="markDelta">---</div>
-      </div>
-    </div>
+  <div class="bar-wrap">
+    <div class="bar" id="bar"></div>
+    <div class="mark-line line65"></div>
+    <div class="mark-line line85"></div>
+    <div class="mark-line line95"></div>
+  </div>
 
-    <div class="barWrap">
-      <div class="bar" id="bar"></div>
-    </div>
+  <div class="labels">
+    <span class="l65">65</span>
+    <span class="l85">85</span>
+    <span class="l95">95</span>
+  </div>
 
-    <div class="marks">
-      <span class="m m65">65</span>
-      <span class="m m85">85</span>
-      <span class="m m95">95</span>
-      <span class="m m100">100</span>
-    </div>
-
-    <div class="bottom">
-      <div id="battleSum">0</div>
-      <div class="need" id="needText">0 / ---</div>
+  <div class="row">
+    <div>Загалом</div>
+    <div>
+      <span id="battleTotal" class="total-value bad">0</span>
+      <span>/</span>
+      <span id="needTotal">---</span>
     </div>
   </div>
 
-  <script>
-    const WS_URL =
-      new URLSearchParams(location.search).get("ws") ||
-      "ws://127.0.0.1:3413";
+  <div class="tank" id="tankName">---</div>
+</div>
 
-    const state = {
-      vehicleName: "---",
-      vehicleTag: null,
+<script>
+const WS_URLS = [
+  "ws://127.0.0.1:3413",
+  "ws://localhost:3413"
+];
 
-      dossierVehicleTag: null,
-      startMark: null,
-      currentMark: null,
-      baseAvg: null,
-      battlesCount: null,
+const state = {
+  vehicleName: null,
+  vehicleTag: null,
+  dossierVehicleTag: null,
 
-      damage: 0,
-      assist: 0,
-      blocked: 0,
-      stun: 0,
+  currentMark: null,
+  startMark: null,
+  baseAvg: null,
+  battlesCount: null,
 
-      inBattle: false,
-      connected: false
-    };
+  damage: 0,
+  assist: 0,
+  blocked: 0,
+  stun: 0,
 
-    const el = {
-      tankName: document.getElementById("tankName"),
-      markPercent: document.getElementById("markPercent"),
-      markDelta: document.getElementById("markDelta"),
-      bar: document.getElementById("bar"),
-      battleSum: document.getElementById("battleSum"),
-      needText: document.getElementById("needText")
-    };
+  inBattle: false,
+  battleStarted: false
+};
 
-    function num(v, def = 0) {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : def;
-    }
+const el = {
+  mark: document.getElementById("mark"),
+  delta: document.getElementById("delta"),
+  bar: document.getElementById("bar"),
+  battleTotal: document.getElementById("battleTotal"),
+  needTotal: document.getElementById("needTotal"),
+  tankName: document.getElementById("tankName")
+};
 
-    function round(v, d = 2) {
-      return Number(v).toFixed(d);
-    }
+function num(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-    function clamp(v, min, max) {
-      return Math.max(min, Math.min(max, v));
-    }
+function formatInt(v) {
+  return Math.round(num(v)).toLocaleString("de-DE");
+}
 
-    function formatInt(v) {
-      return Math.round(num(v)).toLocaleString("ru-RU");
-    }
+function formatPercent(v) {
+  if (!Number.isFinite(v)) return "--.--%";
+  return v.toFixed(2) + "%";
+}
 
-    function setState(path, value) {
-      switch (path) {
-        case "hangar.vehicle.info":
-          if (value) {
-            state.vehicleName =
-              value.localizedShortName ||
-              value.localizedName ||
-              "---";
+function shortTankNameFromTag(tag) {
+  if (!tag) return null;
 
-            state.vehicleTag = value.tag || null;
+  const raw = String(tag).split(":").pop() || tag;
 
-            state.damage = 0;
-            state.assist = 0;
-            state.blocked = 0;
-            state.stun = 0;
+  return raw
+    .replace(/^[A-Z]\d+_/, "")
+    .replace(/_/g, " ")
+    .replace(/\bBat Chatillon Bourrasque DV\b/i, "Miel")
+    .replace(/\bBat Chatillon Bourrasque\b/i, "Bourrasque")
+    .replace(/\bFV4025 Contriver\b/i, "Contriver")
+    .replace(/\bE65 Zwilling\b/i, "E 65 Zwilling")
+    .trim();
+}
 
-            state.startMark = null;
-            state.currentMark = null;
-          }
-          break;
+function calcBattleTotal() {
+  return num(state.damage) + num(state.assist);
+}
 
-        case "battle.vehicle":
-          if (value) {
-            state.vehicleName =
-              value.localizedShortName ||
-              value.localizedName ||
-              state.vehicleName;
+function calcLiveAvg() {
+  if (!Number.isFinite(state.baseAvg) || !Number.isFinite(state.battlesCount)) {
+    return null;
+  }
 
-            state.vehicleTag = value.tag || state.vehicleTag;
-          }
-          break;
+  const total = calcBattleTotal();
+  return ((state.baseAvg * state.battlesCount) + total) / (state.battlesCount + 1);
+}
 
-        case "dossier.current":
-          if (!value) break;
+function calcLiveMark() {
+  if (!Number.isFinite(state.currentMark) || !Number.isFinite(state.baseAvg)) {
+    return null;
+  }
 
-          // Головний захист: не брати відмітку від іншого танка
-          if (state.vehicleTag && value.vehicleTag && value.vehicleTag !== state.vehicleTag) {
-            break;
-          }
+  const liveAvg = calcLiveAvg();
+  if (!Number.isFinite(liveAvg)) return state.currentMark;
 
-          state.dossierVehicleTag = value.vehicleTag || null;
-          state.currentMark = num(value.damageRating, state.currentMark);
-          state.baseAvg = num(value.movingAvgDamage, state.baseAvg);
-          state.battlesCount = num(value.battlesCount, state.battlesCount);
+  const diffAvg = liveAvg - state.baseAvg;
 
-          if (state.startMark === null) {
-            state.startMark = state.currentMark;
-          }
-          break;
+  /*
+    Приблизна live-оцінка відмітки.
+    Реальні післябойові % дає сервер/досьє, але в бою ми рахуємо прогноз.
+    Не чіпай коефіцієнт без потреби.
+  */
+  const percentPerAvgPoint = 0.0125;
 
-        case "battle.isInBattle":
-          state.inBattle = value === true;
-          if (state.inBattle) {
-            state.damage = 0;
-            state.assist = 0;
-            state.blocked = 0;
-            state.stun = 0;
+  return clamp(state.currentMark + diffAvg * percentPerAvgPoint, 0, 100);
+}
 
-            if (state.currentMark !== null) {
-              state.startMark = state.currentMark;
-            }
-          }
-          break;
+function calcNeededDamage() {
+  if (!Number.isFinite(state.baseAvg)) return null;
 
-        case "battle.efficiency.damage":
-          state.damage = num(value);
-          break;
+  const mark = Number.isFinite(state.currentMark) ? state.currentMark : 0;
 
-        case "battle.efficiency.assist":
-          state.assist = num(value);
-          break;
+  let targetAvg;
 
-        case "battle.efficiency.blocked":
-          state.blocked = num(value);
-          break;
+  if (mark < 65) {
+    targetAvg = state.baseAvg + 350;
+  } else if (mark < 85) {
+    targetAvg = state.baseAvg + 900;
+  } else if (mark < 95) {
+    targetAvg = state.baseAvg + 1400;
+  } else {
+    targetAvg = state.baseAvg + 1800;
+  }
 
-        case "battle.efficiency.stun":
-          state.stun = num(value);
-          break;
+  const need = Math.max(0, Math.round(targetAvg));
+  return need;
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function setDelta(value) {
+  const d = el.delta;
+
+  if (!Number.isFinite(value)) {
+    d.textContent = "+0.00%";
+    d.className = "delta zero";
+    return;
+  }
+
+  const sign = value > 0 ? "+" : "";
+  d.textContent = sign + value.toFixed(2) + "%";
+
+  d.className = "delta " + (
+    value > 0.005 ? "plus" :
+    value < -0.005 ? "minus" :
+    "zero"
+  );
+}
+
+function render() {
+  let visibleMark = calcLiveMark();
+
+  if (!Number.isFinite(visibleMark)) {
+    visibleMark = state.currentMark;
+  }
+
+  if (!Number.isFinite(visibleMark)) {
+    el.mark.textContent = "--.--%";
+    el.bar.style.width = "0%";
+  } else {
+    el.mark.textContent = formatPercent(visibleMark);
+    el.bar.style.width = clamp(visibleMark, 0, 100) + "%";
+  }
+
+  const start = Number.isFinite(state.startMark) ? state.startMark : state.currentMark;
+  const delta = Number.isFinite(visibleMark) && Number.isFinite(start)
+    ? visibleMark - start
+    : 0;
+
+  setDelta(delta);
+
+  const total = calcBattleTotal();
+  const need = calcNeededDamage();
+
+  el.battleTotal.textContent = formatInt(total);
+  el.needTotal.textContent = Number.isFinite(need) ? formatInt(need) : "auto";
+
+  el.battleTotal.className = "total-value " + (
+    Number.isFinite(need) && total >= need ? "good" : "bad"
+  );
+
+  el.tankName.textContent =
+    state.vehicleName ||
+    shortTankNameFromTag(state.vehicleTag) ||
+    shortTankNameFromTag(state.dossierVehicleTag) ||
+    "---";
+}
+
+function resetBattleValues() {
+  state.damage = 0;
+  state.assist = 0;
+  state.blocked = 0;
+  state.stun = 0;
+}
+
+function handleState(path, value) {
+  switch (path) {
+    case "hangar.vehicle.info":
+    case "battle.vehicle":
+      if (value) {
+        state.vehicleName = value.localizedShortName || value.localizedName || state.vehicleName;
+        state.vehicleTag = value.tag || state.vehicleTag;
+      }
+      render();
+      break;
+
+    case "dossier.current":
+      if (!value) break;
+
+      state.dossierVehicleTag = value.vehicleTag || state.dossierVehicleTag;
+      state.currentMark = num(value.damageRating, state.currentMark);
+      state.baseAvg = num(value.movingAvgDamage, state.baseAvg);
+      state.battlesCount = num(value.battlesCount, state.battlesCount);
+
+      if (state.startMark === null && Number.isFinite(state.currentMark)) {
+        state.startMark = state.currentMark;
+      }
+
+      if (!state.vehicleTag && value.vehicleTag) {
+        state.vehicleTag = value.vehicleTag;
       }
 
       render();
-    }
+      break;
 
-    function handleBattleResult(value) {
-      if (!value || !value.personal) return;
+    case "battle.isInBattle":
+      state.inBattle = Boolean(value);
 
-      let personal = null;
+      if (state.inBattle && !state.battleStarted) {
+        state.battleStarted = true;
+        resetBattleValues();
 
-      if (state.vehicleTag && value.personal) {
-        for (const key in value.personal) {
-          const item = value.personal[key];
-          if (!item || typeof item !== "object") continue;
-
-          if (
-            item.damageRating !== undefined ||
-            item.movingAvgDamage !== undefined ||
-            item.damageDealt !== undefined
-          ) {
-            personal = item;
-            break;
-          }
+        if (Number.isFinite(state.currentMark)) {
+          state.startMark = state.currentMark;
         }
       }
 
-      if (!personal) return;
-
-      if (personal.damageDealt !== undefined) {
-        state.damage = num(personal.damageDealt);
-      }
-
-      const radio = num(personal.damageAssistedRadio);
-      const track = num(personal.damageAssistedTrack);
-      const stun = num(personal.damageAssistedStun);
-      state.assist = radio + track + stun;
-
-      if (personal.damageBlockedByArmor !== undefined) {
-        state.blocked = num(personal.damageBlockedByArmor);
-      }
-
-      if (personal.damageRating !== undefined) {
-        state.currentMark = num(personal.damageRating);
-      }
-
-      if (personal.movingAvgDamage !== undefined) {
-        state.baseAvg = num(personal.movingAvgDamage);
+      if (!state.inBattle) {
+        state.battleStarted = false;
       }
 
       render();
+      break;
+
+    case "battle.efficiency.damage":
+      state.damage = num(value);
+      render();
+      break;
+
+    case "battle.efficiency.assist":
+      state.assist = num(value);
+      render();
+      break;
+
+    case "battle.efficiency.blocked":
+      state.blocked = num(value);
+      render();
+      break;
+
+    case "battle.efficiency.stun":
+      state.stun = num(value);
+      render();
+      break;
+  }
+}
+
+function handleMessage(msg) {
+  if (!msg) return;
+
+  if (msg.type === "init" && Array.isArray(msg.states)) {
+    for (const item of msg.states) {
+      handleState(item.path, item.value);
     }
-
-    function getBattleSum() {
-      return num(state.damage) + num(state.assist) + num(state.blocked);
-    }
-
-    function getNeedDamage() {
-      if (!state.baseAvg) return null;
-
-      // Орієнтир: показує, скільки потрібно набрати сумарки хоча б до поточного AVG
-      return Math.max(0, state.baseAvg - getBattleSum());
-    }
-
-    function getLiveMark() {
-      if (state.startMark === null) return state.currentMark;
-
-      if (!state.baseAvg || !state.battlesCount) {
-        return state.currentMark;
-      }
-
-      const sum = getBattleSum();
-
-      // Обережна live-оцінка, щоб під час бою не ламати реальний dossier.current
-      const diff = sum - state.baseAvg;
-      const factor = 1 / Math.max(80, Math.min(180, state.battlesCount / 3));
-      const live = state.startMark + diff * factor;
-
-      return clamp(live, 0, 100);
-    }
-
-    function render() {
-      const battleSum = getBattleSum();
-      const liveMark = getLiveMark();
-      const shownMark = liveMark !== null ? liveMark : state.currentMark;
-
-      el.tankName.textContent = state.vehicleName || "---";
-
-      if (shownMark !== null && Number.isFinite(shownMark)) {
-        el.markPercent.textContent = `${round(shownMark, 2)}%`;
-        el.bar.style.width = `${clamp(shownMark, 0, 100)}%`;
-      } else {
-        el.markPercent.textContent = "--.--%";
-        el.bar.style.width = "0%";
-      }
-
-      if (
-        state.startMark !== null &&
-        shownMark !== null &&
-        Number.isFinite(shownMark)
-      ) {
-        const delta = shownMark - state.startMark;
-        const sign = delta >= 0 ? "+" : "";
-        el.markDelta.textContent = `${sign}${round(delta, 2)}%`;
-        el.markDelta.className = `delta ${delta >= 0 ? "plus" : "minus"}`;
-      } else {
-        el.markDelta.textContent = "---";
-        el.markDelta.className = "delta";
-      }
-
-      const need = getNeedDamage();
-
-      el.battleSum.textContent = formatInt(battleSum);
-
-      if (need === null) {
-        el.needText.textContent = `${formatInt(battleSum)} / ---`;
-      } else {
-        el.needText.textContent = `${formatInt(battleSum)} / ${formatInt(state.baseAvg)}`;
-      }
-    }
-
-    function handleMessage(raw) {
-      let msg;
-
-      try {
-        msg = typeof raw === "string" ? JSON.parse(raw) : raw;
-      } catch (e) {
-        return;
-      }
-
-      if (!msg) return;
-
-      if (msg.type === "init" && Array.isArray(msg.states)) {
-        msg.states.forEach(s => {
-          if (s && s.path) setState(s.path, s.value);
-        });
-        return;
-      }
-
-      if (msg.type === "state") {
-        setState(msg.path, msg.value);
-        return;
-      }
-
-      if (msg.type === "trigger") {
-        if (msg.path === "battle.onBattleResult") {
-          handleBattleResult(msg.value);
-        }
-      }
-    }
-
-    function connect() {
-      let ws;
-
-      try {
-        ws = new WebSocket(WS_URL);
-      } catch (e) {
-        setTimeout(connect, 2000);
-        return;
-      }
-
-      ws.onopen = () => {
-        state.connected = true;
-      };
-
-      ws.onmessage = (event) => {
-        handleMessage(event.data);
-      };
-
-      ws.onclose = () => {
-        state.connected = false;
-        setTimeout(connect, 1500);
-      };
-
-      ws.onerror = () => {
-        try {
-          ws.close();
-        } catch (e) {}
-      };
-    }
-
     render();
-    connect();
-  </script>
+    return;
+  }
+
+  if (msg.type === "state") {
+    handleState(msg.path, msg.value);
+    return;
+  }
+
+  if (msg.type === "trigger" && msg.path === "battle.onBattleResult") {
+    const value = msg.value;
+    const personal = value && value.personal;
+
+    if (personal) {
+      for (const key in personal) {
+        const data = personal[key];
+
+        if (data && typeof data === "object" && data.damageRating !== undefined) {
+          state.currentMark = num(data.damageRating, state.currentMark);
+        }
+
+        if (data && typeof data === "object" && data.movingAvgDamage !== undefined) {
+          state.baseAvg = num(data.movingAvgDamage, state.baseAvg);
+        }
+      }
+    }
+
+    resetBattleValues();
+    state.startMark = state.currentMark;
+    render();
+  }
+}
+
+let wsIndex = 0;
+let socket = null;
+
+function connect() {
+  const url = WS_URLS[wsIndex % WS_URLS.length];
+
+  try {
+    socket = new WebSocket(url);
+
+    socket.onopen = () => {
+      console.log("MOE widget connected:", url);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      } catch (e) {
+        console.error("Bad WS message", e, event.data);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log("MOE widget disconnected");
+      wsIndex++;
+      setTimeout(connect, 1500);
+    };
+
+    socket.onerror = () => {
+      try { socket.close(); } catch (e) {}
+    };
+
+  } catch (e) {
+    wsIndex++;
+    setTimeout(connect, 1500);
+  }
+}
+
+render();
+connect();
+</script>
 </body>
 </html>
