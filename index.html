@@ -2,22 +2,20 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-<link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap" rel="stylesheet">
 <style>
-    html, body { margin: 0; padding: 0; background: transparent; font-family: "Roboto Condensed", Arial, sans-serif; overflow: hidden; }
+    html, body { margin: 0; padding: 0; background: transparent; font-family: "Roboto Condensed", Arial, sans-serif; overflow: hidden; color: #fff; }
     body { padding: 12px; }
-    .widget { width: 260px; padding: 14px; border-radius: 8px; background: rgba(0,0,0,.45); color: #fff; box-shadow: 0 0 18px rgba(0,0,0,.45); }
-    .top { display: flex; justify-content: center; align-items: center; gap: 10px; }
-    .percent { font-size: 40px; line-height: 1; font-weight: 700; color: #fff; text-shadow: 0 2px 5px #000; -webkit-text-stroke: 1px rgba(0,0,0,.85); }
-    .delta { font-size: 18px; line-height: 1; margin-top: 5px; font-weight: 700; text-shadow: 0 2px 4px #000; }
-    .plus { color: #60ff00; } .minus { color: #ff4b4b; } .neutral { color: #dfe6ef; }
-    .bar-bg { margin-top: 14px; height: 8px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.22); position: relative; overflow: hidden; }
-    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ff0000 0%, #ff7a00 18%, #ffff00 40%, #60ff00 60%, #00d8ff 80%, #a000ff 100%); background-size: 260px 100%; transition: width .2s linear; }
-    .total { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #000; }
-    .total-label { color: #d7dde5; }
-    .value.good { color: #60ff00; } .value.bad { color: #ff4b4b; }
-    .tank { margin-top: 7px; font-size: 13px; color: #cfd6df; }
-    .hidden { display: none; }
+    .widget { width: 260px; padding: 14px; border-radius: 8px; background: rgba(0,0,0,.5); box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+    .top { display: flex; justify-content: center; align-items: baseline; gap: 8px; }
+    .percent { font-size: 38px; font-weight: 700; text-shadow: 0 2px 4px #000; }
+    .delta { font-size: 18px; font-weight: 700; text-shadow: 0 2px 4px #000; }
+    .plus { color: #60ff00; } .minus { color: #ff4b4b; }
+    .bar-bg { margin: 12px 0; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; position: relative; }
+    .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ff4b4b, #ffff00, #60ff00); transition: width 0.3s; }
+    .total { display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; }
+    .target-val { color: #eee; }
+    .current-val.bad { color: #ff4b4b; } .current-val.good { color: #60ff00; }
+    .tank-name { margin-top: 5px; font-size: 12px; color: #aaa; text-transform: uppercase; }
 </style>
 </head>
 <body>
@@ -25,130 +23,95 @@
 <div id="widget" class="widget">
     <div class="top">
         <div id="percent" class="percent">--.--%</div>
-        <div id="delta" class="delta neutral">0.00%</div>
+        <div id="delta" class="delta">0.00%</div>
     </div>
     <div class="bar-bg"><div id="bar" class="bar"></div></div>
     <div class="total">
-        <div class="total-label">Загалом</div>
-        <div><span id="value" class="value bad">0</span> / <span id="target">0</span></div>
+        <span>Загалом</span>
+        <div><span id="current" class="current-val bad">0</span> / <span id="target" class="target-val">0</span></div>
     </div>
-    <div id="tank" class="tank"></div>
+    <div id="tank" class="tank-name">Завантаження...</div>
 </div>
 
 <script>
 const WS_URL = "ws://localhost:38200";
-const EMA_K = 2 / 101; 
-
 const el = id => document.getElementById(id);
-const widgetEl = el("widget"), percentEl = el("percent"), deltaEl = el("delta");
-const barEl = el("bar"), valueEl = el("value"), targetEl = el("target"), tankEl = el("tank");
 
-let damage = 0, spot = 0, track = 0, stun = 0;
-let startRating = null, startAvg = null, moeDistribution = null;
-let currentTankTag = null;
+let state = {
+    damage: 0, spot: 0, track: 0, stun: 0,
+    startPercent: null,
+    targetDamage: 0, // Це та сама цифра "Загалом"
+    tankName: ""
+};
 
-function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-function fmt(n) { return Math.round(n || 0).toLocaleString("uk-UA"); }
-
-// Твій старий метод розрахунку сумарки (Дамаг + Макс. асист)
-function battleValue() {
-    return (Number(damage) || 0) + Math.max(Number(spot), Number(track), Number(stun));
+function getBestAssist() {
+    return Math.max(state.spot, state.track, state.stun);
 }
 
-// Твій старий надійний пошук даних
-function deepFind(obj, keys) {
-    let found = [];
-    if (!obj || typeof obj !== "object") return found;
-    for (let k in obj) {
-        if (keys.includes(k)) found.push({key: k, value: obj[k]});
-        if (obj[k] && typeof obj[k] === "object") found = found.concat(deepFind(obj[k], keys));
+function updateUI() {
+    const total = state.damage + getBestAssist();
+    const diff = state.targetDamage > 0 ? (total - state.targetDamage) : 0;
+    
+    // Орієнтовний розрахунок дельти (1% відмітки ≈ 40-150 од. залежно від танка)
+    // Використовуємо спрощену модель для візуалізації, поки не отримаємо точні дані
+    const estimatedWeight = state.targetDamage * 0.04; 
+    const deltaPct = diff / estimatedWeight;
+    const currentPct = (state.startPercent || 0) + deltaPct;
+
+    el("current").textContent = total.toLocaleString("uk-UA");
+    el("target").textContent = Math.round(state.targetDamage).toLocaleString("uk-UA");
+    el("percent").textContent = (state.startPercent ? currentPct.toFixed(2) : "--.--") + "%";
+    el("bar").style.width = Math.min(100, Math.max(0, currentPct)) + "%";
+    
+    const deltaEl = el("delta");
+    deltaEl.textContent = (deltaPct >= 0 ? "+" : "") + deltaPct.toFixed(2) + "%";
+    deltaEl.className = "delta " + (deltaPct >= 0 ? "plus" : "minus");
+    el("current").className = "current-val " + (total >= state.targetDamage ? "good" : "bad");
+    el("tank").textContent = state.tankName;
+}
+
+function deepSearch(obj, key) {
+    if (obj && typeof obj === "object") {
+        if (key in obj) return obj[key];
+        for (let k in obj) {
+            let res = deepSearch(obj[k], key);
+            if (res !== undefined) return res;
+        }
     }
-    return found;
-}
-
-function update() {
-    const curVal = battleValue();
-    valueEl.textContent = fmt(curVal);
-    
-    // ОСНОВНЕ ВИПРАВЛЕННЯ: Ціль («Загалом») тепер береться ПРЯМО з того, що прислав мод
-    targetEl.textContent = startAvg ? fmt(startAvg) : "0";
-    valueEl.className = "value " + (startAvg && curVal >= startAvg ? "good" : "bad");
-
-    if (startRating !== null && startAvg !== null) {
-        const predicted = startAvg + (curVal - startAvg) * EMA_K;
-        
-        // Розрахунок дельти (ціна 1% відмітки)
-        let dmgPerPct = startAvg * 0.045; // Базовий
-        if (moeDistribution && moeDistribution.length >= 2) {
-            const p1 = moeDistribution[0], p2 = moeDistribution[moeDistribution.length - 1];
-            dmgPerPct = Math.abs(p2.damage - p1.damage) / Math.max(1, Math.abs(p2.percent - p1.percent));
-        }
-
-        const diff = (predicted - startAvg) / dmgPerPct;
-        const currentRating = Math.max(0, Math.min(100, startRating + diff));
-
-        percentEl.textContent = currentRating.toFixed(2) + "%";
-        barEl.style.width = currentRating + "%";
-        deltaEl.textContent = (diff >= 0 ? "+" : "") + diff.toFixed(2) + "%";
-        deltaEl.className = "delta " + (diff > 0.005 ? "plus" : (diff < -0.005 ? "minus" : "neutral"));
-    }
-    
-    // Оновлення назви танка
-    if (currentTankTag) tankEl.textContent = currentTankTag;
-}
-
-function processState(p) {
-    const found = deepFind(p.value, ["damageRating", "movingAvgDamage", "localizedShortName", "damageBetterThanNPercent"]);
-    
-    found.forEach(f => {
-        if (f.key === "damageRating") {
-            // Оновлюємо рейтинг тільки якщо ми не в бою (або на старті)
-            if (battleValue() === 0) startRating = num(f.value);
-        }
-        if (f.key === "movingAvgDamage") {
-            // Оновлюємо початкову планку ("Загалом")
-            startAvg = num(f.value);
-        }
-        if (f.key === "localizedShortName") {
-            if (currentTankTag !== f.value) {
-                currentTankTag = f.value;
-                damage = 0; spot = 0; track = 0; stun = 0;
-            }
-        }
-        if (f.key === "damageBetterThanNPercent") {
-            const d = f.value;
-            let pts = [];
-            for (let k in d) pts.push({percent: num(k), damage: num(d[k])});
-            moeDistribution = pts.sort((a,b) => a.percent - b.percent);
-        }
-    });
-    update();
 }
 
 function connect() {
     const ws = new WebSocket(WS_URL);
     ws.onmessage = e => {
-        const p = JSON.parse(e.data);
-        if (p.type === "state") {
-            const path = p.path.toLowerCase();
-            if (path.includes("efficiency.damage")) damage = num(p.value) || 0;
-            if (path.includes("assistedradio")) spot = num(p.value) || 0;
-            if (path.includes("assistedtrack")) track = num(p.value) || 0;
-            if (path.includes("assistedstun")) stun = num(p.value) || 0;
-            
-            if (path.includes("battle.isinbattle")) {
-                widgetEl.classList.toggle("hidden", !p.value);
-                if (!p.value) { damage=0; spot=0; track=0; stun=0; }
-            }
-            
-            processState(p);
+        const data = JSON.parse(e.data);
+        if (data.type === "state") {
+            const path = data.path.toLowerCase();
+            const val = data.value;
+
+            // 1. Отримуємо назву танка
+            if (path.includes("vehicle") && val?.localizedShortName) state.tankName = val.localizedShortName;
+
+            // 2. Отримуємо бойові показники
+            if (path.includes("efficiency.damage")) state.damage = Number(val) || 0;
+            if (path.includes("assistedradio")) state.spot = Number(val) || 0;
+            if (path.includes("assistedtrack")) state.track = Number(val) || 0;
+            if (path.includes("assistedstun")) state.stun = Number(val) || 0;
+
+            // 3. СИНХРОНІЗАЦІЯ ПЛАНКИ (Найважливіше)
+            // Шукаємо movingAvgDamage у будь-яких пакетах (dossier або moeInfo)
+            const foundTarget = deepSearch(val, "movingAvgDamage");
+            if (foundTarget) state.targetDamage = foundTarget;
+
+            const foundRating = deepSearch(val, "damageRating");
+            if (foundRating && state.damage === 0) state.startPercent = foundRating;
+
+            updateUI();
         }
     };
     ws.onclose = () => setTimeout(connect, 1000);
 }
 
 connect();
-update();
 </script>
 </body>
 </html>
